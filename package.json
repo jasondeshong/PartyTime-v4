@@ -1,0 +1,10 @@
+{
+  "name": "partytime",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "npm run dev:server & npm run dev:client",
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server"
+  }
+}

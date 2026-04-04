@@ -32,10 +32,13 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     socket.emit("skip", code);
   }, [code]);
 
+  // SDK only works on desktop browsers — disable on mobile/tablet
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
   // SDK still used for auto-advance on desktop (Premium host)
   const { isReady, play, pause } = useSpotifyPlayer({
     getToken,
-    enabled: isHost && user.premium,
+    enabled: isHost && user.premium && !isMobile,
     onTrackEnd: handleTrackEnd,
   });
 

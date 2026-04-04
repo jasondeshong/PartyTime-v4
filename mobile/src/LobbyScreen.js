@@ -24,6 +24,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const isGuest = !getToken;
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0-1
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const pollRef = useRef(null);
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
 
@@ -32,6 +37,101 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     clearTimeout(toastRef.current);
     toastRef.current = setTimeout(() => setToast(null), 3500);
   }
+
+  // Poll Spotify playback state
+  useEffect(() => {
+    if (isGuest || !nowPlaying?.spotifyId) {
+      setIsPlaying(false);
+      setProgress(0);
+      return;
+    }
+    async function poll() {
+      try {
+        const token = await getToken();
+        const res = await fetch("https://api.spotify.com/v1/me/player", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 200) {
+          const data = await res.json();
+          setIsPlaying(data.is_playing);
+          setDuration(data.item?.duration_ms || 0);
+          setPosition(data.progress_ms || 0);
+          if (data.item?.duration_ms) {
+            setProgress((data.progress_ms || 0) / data.item.duration_ms);
+          }
+          // Auto-advance: if track ended (paused + near end)
+          if (!data.is_playing && data.progress_ms === 0 && data.item?.id !== nowPlaying.spotifyId) {
+            socket.emit("skip", code);
+          }
+        } else if (res.status === 204) {
+          setIsPlaying(false);
+        }
+      } catch {}
+    }
+    poll();
+    pollRef.current = setInterval(poll, 1500);
+    return () => clearInterval(pollRef.current);
+  }, [nowPlaying?.spotifyId, isGuest]);
+
+  async function handlePlay() {
+    if (!getToken || !nowPlaying?.spotifyId) return;
+    try {
+      const token = await getToken();
+      let res = await fetch("https://api.spotify.com/v1/me/player/play", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+      });
+      if (res.status === 404) {
+        // No active device — launch Spotify silently, wait, retry
+        await Linking.openURL("spotify://");
+        // Wait for Spotify to activate as a device
+        await new Promise((r) => setTimeout(r, 2500));
+        res = await fetch("https://api.spotify.com/v1/me/player/play", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+        });
+        if (!res.ok && res.status !== 204) {
+          showToast("Connecting to Spotify — tap play again");
+        } else {
+          setIsPlaying(true);
+        }
+      } else if (res.status === 403) {
+        showToast("Spotify Premium required for playback");
+      } else if (res.ok || res.status === 204) {
+        setIsPlaying(true);
+      }
+    } catch { showToast("Connecting to Spotify — tap play again"); }
+  }
+
+  async function handlePause() {
+    if (!getToken) return;
+    try {
+      const token = await getToken();
+      const res = await fetch("https://api.spotify.com/v1/me/player/pause", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok || res.status === 204) setIsPlaying(false);
+    } catch {}
+  }
+
+  // Auto-play when now playing changes
+  useEffect(() => {
+    if (isGuest || !nowPlaying?.spotifyId || !getToken) return;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("https://api.spotify.com/v1/me/player/play", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+        });
+        if (res.ok || res.status === 204) setIsPlaying(true);
+      } catch {}
+    })();
+  }, [nowPlaying?.spotifyId]);
 
   useEffect(() => {
     socket.on("lobby-state", (lobby) => {
@@ -275,43 +375,42 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 )}
               </View>
 
-              {/* Play / Pause controls */}
+              {/* Player controls */}
               {nowPlaying.spotifyId && !isGuest && (
                 <View style={s.playerControls}>
-                  <TouchableOpacity
-                    style={s.playBtn}
-                    onPress={async () => {
-                      try {
-                        const token = await getToken();
-                        const res = await fetch("https://api.spotify.com/v1/me/player/play", {
-                          method: "PUT",
-                          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
-                        });
-                        if (res.status === 404) showToast("Open Spotify first, then tap play");
-                        else if (res.status === 403) showToast("Spotify Premium required for playback");
-                        else if (!res.ok && res.status !== 204) showToast("Couldn't start playback");
-                      } catch { showToast("Open Spotify first, then tap play"); }
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.playBtnIcon}>▶</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.pauseBtn}
-                    onPress={async () => {
-                      try {
-                        const token = await getToken();
-                        await fetch("https://api.spotify.com/v1/me/player/pause", {
-                          method: "PUT",
-                          headers: { Authorization: `Bearer ${token}` },
-                        });
-                      } catch {}
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.pauseBtnIcon}>❚❚</Text>
-                  </TouchableOpacity>
+                  {/* Progress bar */}
+                  <View style={s.progressRow}>
+                    <Text style={s.progressTime}>{fmt(position)}</Text>
+                    <View style={s.progressTrack}>
+                      <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+                    </View>
+                    <Text style={s.progressTime}>{fmt(duration)}</Text>
+                  </View>
+                  {/* Buttons */}
+                  <View style={s.controlsRow}>
+                    <TouchableOpacity
+                      style={s.playBtn}
+                      onPress={isPlaying ? handlePause : handlePlay}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={s.playBtnIcon}>{isPlaying ? "❚❚" : "▶"}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.skipControlBtn}
+                      onPress={skip}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={s.skipControlText}>▶▶</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              {/* Guest sees progress bar too (read-only) */}
+              {nowPlaying.spotifyId && isGuest && progress > 0 && (
+                <View style={s.progressRowGuest}>
+                  <View style={s.progressTrack}>
+                    <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+                  </View>
                 </View>
               )}
             </>
@@ -490,18 +589,23 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8,
   },
   skipText: { color: "rgba(136,136,136,0.6)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1.5 },
-  playerControls: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 },
+  playerControls: { marginTop: 14 },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  progressRowGuest: { marginTop: 12 },
+  progressTime: { color: "rgba(136,136,136,0.4)", fontSize: 9, fontFamily: "monospace", width: 32, textAlign: "center" },
+  progressTrack: { flex: 1, height: 3, backgroundColor: "rgba(42,42,42,0.5)", borderRadius: 2, overflow: "hidden" },
+  progressFill: { height: "100%", backgroundColor: "#c96442", borderRadius: 2 },
+  controlsRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   playBtn: {
     flex: 1, backgroundColor: "#c96442", borderRadius: 14,
-    paddingVertical: 12, alignItems: "center", justifyContent: "center",
-    flexDirection: "row", gap: 8,
+    paddingVertical: 12, alignItems: "center",
   },
-  playBtnIcon: { color: "#fff", fontSize: 14 },
-  pauseBtn: {
+  playBtnIcon: { color: "#fff", fontSize: 16 },
+  skipControlBtn: {
     backgroundColor: "rgba(42,42,42,0.5)", borderRadius: 14,
     paddingVertical: 12, paddingHorizontal: 20, alignItems: "center",
   },
-  pauseBtnIcon: { color: "rgba(136,136,136,0.7)", fontSize: 12 },
+  skipControlText: { color: "rgba(136,136,136,0.7)", fontSize: 12 },
   npEmpty: { alignItems: "center", paddingVertical: 8 },
   npEmptyLabel: { color: "rgba(136,136,136,0.4)", fontSize: 11, fontFamily: "monospace", letterSpacing: 2, marginBottom: 12 },
   npEmptyText: { color: "rgba(136,136,136,0.3)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, marginBottom: 8 },

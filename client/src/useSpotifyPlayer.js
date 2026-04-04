@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
-export default function useSpotifyPlayer({ getToken, enabled }) {
+export default function useSpotifyPlayer({ getToken, enabled, onTrackEnd }) {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
   const [isReady, setIsReady] = useState(false);
@@ -9,6 +9,11 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
   const [duration, setDuration] = useState(0);
   const scriptLoaded = useRef(false);
   const intervalRef = useRef(null);
+  const trackEndRef = useRef(onTrackEnd);
+  const prevTrackRef = useRef(null);
+
+  // Keep callback ref current
+  trackEndRef.current = onTrackEnd;
 
   useEffect(() => {
     if (!enabled) return;
@@ -49,6 +54,17 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
         setIsPlaying(!state.paused);
         setPosition(state.position);
         setDuration(state.duration);
+
+        const currentTrack = state.track_window?.current_track?.uri;
+
+        // Detect track end: paused, position is 0, and we had a track playing
+        if (state.paused && state.position === 0 && prevTrackRef.current && currentTrack === prevTrackRef.current) {
+          trackEndRef.current?.();
+        }
+
+        if (!state.paused) {
+          prevTrackRef.current = currentTrack;
+        }
       });
 
       p.connect();

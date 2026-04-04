@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import socket from "./socket";
 import api from "./api";
 import useSpotifyPlayer from "./useSpotifyPlayer";
@@ -13,9 +13,14 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [copied, setCopied] = useState(false);
   const debounceRef = useRef(null);
 
+  const handleTrackEnd = useCallback(() => {
+    socket.emit("skip", code);
+  }, [code]);
+
   const { isReady, isPlaying, position, duration, play, pause, togglePlay, seek } = useSpotifyPlayer({
     getToken,
     enabled: isHost && user.premium,
+    onTrackEnd: handleTrackEnd,
   });
 
   // Auto-play when now playing changes (host only)

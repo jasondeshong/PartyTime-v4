@@ -26,7 +26,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   function showToast(msg) {
     setToast(msg);
     clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(null), 2500);
+    toastRef.current = setTimeout(() => setToast(null), 3500);
   }
 
   const handleTrackEnd = useCallback(() => {

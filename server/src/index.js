@@ -382,7 +382,7 @@ io.on("connection", (socket) => {
     // Check if already played in this lobby
     const played = playedSongs.get(code);
     if (played && played.has(song.spotifyId)) {
-      socket.emit("add-error", "This song was already played");
+      socket.emit("add-error", `"${song.title || "This song"}" already played this session — try another!`);
       return;
     }
 
@@ -412,7 +412,7 @@ io.on("connection", (socket) => {
 
     // Also check if currently playing
     if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
-      socket.emit("add-error", "This song is currently playing");
+      socket.emit("add-error", "This one's playing right now — enjoy it!");
       return;
     }
 
@@ -489,9 +489,9 @@ io.on("connection", (socket) => {
 
     songVotes.set(socket.id, direction);
 
-    // Check for auto-remove: if downvotes >= 50% of lobby users, remove song
+    // Check for auto-remove: if downvotes >= 80% of lobby users, remove song
     const users = lobbyUsers.get(code) || [];
-    const threshold = Math.ceil(users.length / 2);
+    const threshold = Math.ceil(users.length * 0.8);
     let downvoteCount = 0;
     for (const dir of songVotes.values()) {
       if (dir === "down") downvoteCount++;

@@ -519,6 +519,16 @@ io.on("connection", (socket) => {
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
   });
 
+  // Rejoin: re-send full lobby state (for app returning from background)
+  socket.on("rejoin", async (code) => {
+    if (!code) return;
+    socket.join(code);
+    const lobby = await getLobby(code);
+    if (lobby) {
+      socket.emit("lobby-state", lobby);
+    }
+  });
+
   socket.on("skip", async (code) => {
     const lobby = await getLobby(code);
     if (!lobby) return;

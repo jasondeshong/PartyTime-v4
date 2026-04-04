@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
-  StyleSheet, Alert, Clipboard, Dimensions, Linking,
+  StyleSheet, Alert, Clipboard, Dimensions, Linking, AppState,
 } from "react-native";
 import socket from "./socket";
 import api from "./api";
@@ -31,11 +31,72 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const pollRef = useRef(null);
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+  const nowPlayingRef = useRef(nowPlaying);
 
   function showToast(msg) {
     setToast(msg);
     clearTimeout(toastRef.current);
     toastRef.current = setTimeout(() => setToast(null), 3500);
+  }
+
+  // Keep nowPlayingRef in sync
+  useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
+
+  // AppState: re-poll + reconnect socket when returning from background
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", async (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
+        // Reconnect socket if needed
+        if (!socket.connected) socket.connect();
+        // Re-join lobby to get fresh state
+        socket.emit("rejoin", code);
+        // Immediate playback check for auto-advance
+        if (!isGuest && nowPlayingRef.current?.spotifyId && getToken) {
+          try {
+            const token = await getToken();
+            const res = await fetch("https://api.spotify.com/v1/me/player", {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.status === 200) {
+              const data = await res.json();
+              setIsPlaying(data.is_playing);
+              setDuration(data.item?.duration_ms || 0);
+              setPosition(data.progress_ms || 0);
+              if (data.item?.duration_ms) {
+                setProgress((data.progress_ms || 0) / data.item.duration_ms);
+              }
+              // Auto-advance if track ended while in background
+              if (!data.is_playing && data.progress_ms === 0 && data.item?.id !== nowPlayingRef.current.spotifyId) {
+                socket.emit("skip", code);
+              }
+            }
+          } catch {}
+        }
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
+  }, [code, isGuest]);
+
+  // Save to library
+  async function saveToLibrary() {
+    if (!getToken || !nowPlaying?.spotifyId) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`https://api.spotify.com/v1/me/tracks`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [nowPlaying.spotifyId] }),
+      });
+      if (res.ok || res.status === 200) {
+        showToast(`"${nowPlaying.title}" saved to library`);
+      } else {
+        showToast("Couldn't save — try again");
+      }
+    } catch {
+      showToast("Couldn't save — try again");
+    }
   }
 
   // Poll Spotify playback state
@@ -368,9 +429,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     <Text style={s.npAddedBy}>via {nowPlaying.addedBy}</Text>
                   )}
                 </View>
-                {isHost && (
-                  <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
-                    <Text style={s.skipText}>SKIP</Text>
+                {!isGuest && (
+                  <TouchableOpacity style={s.saveBtn} onPress={saveToLibrary} activeOpacity={0.7}>
+                    <Text style={s.saveBtnIcon}>+</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -584,11 +645,11 @@ const s = StyleSheet.create({
   npTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
   npArtist: { color: "rgba(136,136,136,0.7)", fontSize: 13 },
   npAddedBy: { color: "rgba(136,136,136,0.3)", fontSize: 11, marginTop: 2, fontFamily: "monospace" },
-  skipBtn: {
-    borderWidth: 1, borderColor: "rgba(42,42,42,0.5)", borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 8,
+  saveBtn: {
+    borderWidth: 1, borderColor: "rgba(42,42,42,0.5)", borderRadius: 14,
+    width: 36, height: 36, alignItems: "center", justifyContent: "center",
   },
-  skipText: { color: "rgba(136,136,136,0.6)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1.5 },
+  saveBtnIcon: { color: "rgba(136,136,136,0.6)", fontSize: 20, fontWeight: "300", marginTop: -1 },
   playerControls: { marginTop: 14 },
   progressRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
   progressRowGuest: { marginTop: 12 },

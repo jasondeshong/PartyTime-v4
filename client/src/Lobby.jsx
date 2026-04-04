@@ -98,6 +98,25 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     }, 300);
   }, [search, tab]);
 
+  async function saveToLibrary() {
+    if (!getToken || !nowPlaying?.spotifyId) return;
+    try {
+      const token = await getToken();
+      const res = await fetch("https://api.spotify.com/v1/me/tracks", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [nowPlaying.spotifyId] }),
+      });
+      if (res.ok || res.status === 200) {
+        showToast(`"${nowPlaying.title}" saved to library`);
+      } else {
+        showToast("Couldn't save — try again");
+      }
+    } catch {
+      showToast("Couldn't save — try again");
+    }
+  }
+
   async function loadLikedSongs() {
     setLoadingLibrary(true);
     try {
@@ -277,12 +296,13 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {isHost && (
+                {!isGuest && (
                   <button
-                    onClick={skip}
-                    className="text-muted/60 hover:text-white text-[11px] font-mono tracking-wider px-3 py-1.5 rounded-lg border border-border/50 hover:border-muted/50 transition"
+                    onClick={saveToLibrary}
+                    className="text-muted/60 hover:text-white text-xl font-light w-9 h-9 rounded-xl border border-border/50 hover:border-muted/50 transition flex items-center justify-center"
+                    title="Save to library"
                   >
-                    SKIP
+                    +
                   </button>
                 )}
                 {nowPlaying.spotifyId && (

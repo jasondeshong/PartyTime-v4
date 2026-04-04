@@ -13,6 +13,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [copied, setCopied] = useState(false);
   const [myVotes, setMyVotes] = useState({});
   const [toast, setToast] = useState(null);
+  const isGuest = !getToken;
   const [tab, setTab] = useState("search"); // "search" | "liked" | "playlists"
   const [likedSongs, setLikedSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
@@ -144,6 +145,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   }
 
   useEffect(() => {
+    if (isGuest) return;
     if (tab === "liked" && likedSongs.length === 0) loadLikedSongs();
     if (tab === "playlists" && playlists.length === 0) loadPlaylists();
   }, [tab]);
@@ -224,11 +226,15 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-white tracking-tight">PartyTime</h1>
-            {isHost && (
+            {isHost ? (
               <span className="bg-accent/15 text-accent text-[10px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wider">
                 Host
               </span>
-            )}
+            ) : isGuest ? (
+              <span className="bg-white/10 text-muted text-[10px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                Guest
+              </span>
+            ) : null}
           </div>
           <button
             onClick={copyCode}
@@ -274,14 +280,29 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                   <p className="text-muted/50 text-xs mt-0.5">added by {nowPlaying.addedBy}</p>
                 )}
               </div>
-              {isHost && (
-                <button
-                  onClick={skip}
-                  className="text-muted hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-muted transition flex-shrink-0"
-                >
-                  Skip
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isHost && (
+                  <button
+                    onClick={skip}
+                    className="text-muted hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-muted transition"
+                  >
+                    Skip
+                  </button>
+                )}
+                {nowPlaying.spotifyId && (
+                  <a
+                    href={`https://open.spotify.com/track/${nowPlaying.spotifyId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#1DB954] hover:text-[#1ed760] transition p-1.5"
+                    title="Open in Spotify"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                    </svg>
+                  </a>
+                )}
+              </div>
             </div>
 
             {/* Spotify embed player — always show for everyone */}
@@ -322,8 +343,10 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       <div className="flex items-center gap-1 mb-3 bg-surface rounded-xl p-1">
         {[
           { id: "search", label: "Search" },
-          { id: "liked", label: "Liked" },
-          { id: "playlists", label: "Playlists" },
+          ...(!isGuest ? [
+            { id: "liked", label: "Liked" },
+            { id: "playlists", label: "Playlists" },
+          ] : []),
         ].map((t) => (
           <button
             key={t.id}
@@ -364,8 +387,8 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
         </div>
       )}
 
-      {/* Liked Songs Tab */}
-      {tab === "liked" && (
+      {/* Liked Songs Tab (host only) */}
+      {tab === "liked" && !isGuest && (
         <div className="mb-4">
           {loadingLibrary ? (
             <div className="flex justify-center py-8">
@@ -385,8 +408,8 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
         </div>
       )}
 
-      {/* Playlists Tab */}
-      {tab === "playlists" && (
+      {/* Playlists Tab (host only) */}
+      {tab === "playlists" && !isGuest && (
         <div className="mb-4">
           {loadingLibrary ? (
             <div className="flex justify-center py-8">

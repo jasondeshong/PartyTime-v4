@@ -11,7 +11,6 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [volume, setVolume] = useState(80);
   const [myVotes, setMyVotes] = useState({});
   const [toast, setToast] = useState(null);
   const [tab, setTab] = useState("search"); // "search" | "liked" | "playlists"
@@ -33,13 +32,14 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     socket.emit("skip", code);
   }, [code]);
 
-  const { isReady, isPlaying, position, duration, play, pause, togglePlay, seek, player } = useSpotifyPlayer({
+  // SDK still used for auto-advance on desktop (Premium host)
+  const { isReady, play, pause } = useSpotifyPlayer({
     getToken,
     enabled: isHost && user.premium,
     onTrackEnd: handleTrackEnd,
   });
 
-  // Auto-play when now playing changes (host only)
+  // Auto-play via SDK when now playing changes (host desktop only)
   useEffect(() => {
     if (isHost && isReady && nowPlaying?.spotifyId) {
       play(`spotify:track:${nowPlaying.spotifyId}`);
@@ -48,10 +48,6 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       pause();
     }
   }, [nowPlaying?.spotifyId, isReady, isHost]);
-
-  useEffect(() => {
-    if (player) player.setVolume(volume / 100);
-  }, [volume, player]);
 
   useEffect(() => {
     socket.on("lobby-state", (lobby) => {
@@ -190,8 +186,6 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     return `${min}:${sec.toString().padStart(2, "0")}`;
   }
 
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
-
   function SongRow({ song, onAdd }) {
     return (
       <button
@@ -287,76 +281,13 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
               )}
             </div>
 
-            {/* Playback controls for host with Premium (desktop SDK) */}
-            {isHost && user.premium && isReady && (
-              <div className="mt-2">
-                <div
-                  className="group relative w-full h-2 bg-border rounded-full cursor-pointer mb-2 touch-none"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                    seek(Math.floor(pct * duration));
-                  }}
-                  onTouchEnd={(e) => {
-                    const touch = e.changedTouches[0];
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
-                    seek(Math.floor(pct * duration));
-                  }}
-                >
-                  <div
-                    className="absolute left-0 top-0 h-full bg-accent rounded-full"
-                    style={{ width: `${progress}%` }}
-                  />
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition"
-                    style={{ left: `calc(${progress}% - 7px)` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(position)}</span>
-                  <button
-                    onClick={togglePlay}
-                    className="text-white hover:text-accent transition p-1 active:scale-95"
-                  >
-                    {isPlaying ? (
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                        <rect x="6" y="4" width="4" height="16" rx="1" />
-                        <rect x="14" y="4" width="4" height="16" rx="1" />
-                      </svg>
-                    ) : (
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    )}
-                  </button>
-                  <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(duration)}</span>
-                </div>
-
-                <div className="flex items-center gap-2 mt-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
-                    <path d="M11 5L6 9H2v6h4l5 4V5z" />
-                    {volume > 0 && <path d="M15.54 8.46a5 5 0 010 7.07" />}
-                    {volume > 50 && <path d="M19.07 4.93a10 10 0 010 14.14" />}
-                  </svg>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={volume}
-                    onChange={(e) => setVolume(Number(e.target.value))}
-                    className="flex-1 h-1 bg-border rounded-full appearance-none cursor-pointer accent-accent"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Spotify embed: show when SDK not ready (mobile) or for non-host/non-premium */}
-            {nowPlaying.spotifyId && (!isHost || !user.premium || !isReady) && (
+            {/* Spotify embed player — always show for everyone */}
+            {nowPlaying.spotifyId && (
               <iframe
+                key={nowPlaying.spotifyId}
                 src={`https://open.spotify.com/embed/track/${nowPlaying.spotifyId}?utm_source=generator&theme=0`}
                 width="100%"
-                height="80"
+                height="152"
                 allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
                 loading="lazy"
                 className="rounded-lg"
@@ -365,9 +296,21 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
           </div>
         ) : (
           <div className="bg-surface border border-border rounded-xl p-4 text-center">
-            <p className="text-muted/50 text-sm">
-              {queue.length > 0 ? "Queue ready" : "Search and add a song to start"}
-            </p>
+            {queue.length > 0 && isHost ? (
+              <>
+                <p className="text-muted text-sm mb-2">Queue ready</p>
+                <button
+                  onClick={skip}
+                  className="bg-accent hover:bg-accent-hover active:bg-accent-hover text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition"
+                >
+                  Play Next
+                </button>
+              </>
+            ) : queue.length > 0 ? (
+              <p className="text-muted/50 text-sm">Waiting for host to start</p>
+            ) : (
+              <p className="text-muted/50 text-sm">Search and add a song to start</p>
+            )}
           </div>
         )}
       </div>

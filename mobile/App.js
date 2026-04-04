@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StatusBar } from "react-native";
+import { StatusBar, Alert } from "react-native";
 import useAuth from "./src/useAuth";
 import LoginScreen from "./src/LoginScreen";
 import HomeScreen from "./src/HomeScreen";
@@ -9,6 +9,7 @@ import socket from "./src/socket";
 export default function App() {
   const { user, loading, login, logout, getToken, isLoggedIn } = useAuth();
   const [lobby, setLobby] = useState(null);
+  const [guestUser, setGuestUser] = useState(null); // { name, isGuest: true }
 
   function handleJoinLobby(lobbyData) {
     setLobby(lobbyData);
@@ -19,6 +20,30 @@ export default function App() {
     setLobby(null);
   }
 
+  function handleGuestJoin({ name, code }) {
+    const guest = { name, isGuest: true };
+    setGuestUser(guest);
+
+    if (!socket.connected) socket.connect();
+    socket.emit("join-lobby", { code, name });
+
+    socket.once("error", (msg) => {
+      Alert.alert("Error", msg);
+      socket.disconnect();
+      setGuestUser(null);
+    });
+
+    socket.once("lobby-state", (lobbyState) => {
+      setLobby({ code, isHost: false, initialState: lobbyState });
+    });
+  }
+
+  function handleGuestLeave() {
+    socket.disconnect();
+    setLobby(null);
+    setGuestUser(null);
+  }
+
   if (loading) {
     return (
       <>
@@ -27,31 +52,35 @@ export default function App() {
     );
   }
 
-  if (!isLoggedIn) {
-    return (
-      <>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
-        <LoginScreen onLogin={login} />
-      </>
-    );
-  }
-
+  // Active lobby (host or guest)
   if (lobby) {
+    const activeUser = guestUser || user;
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
         <LobbyScreen
           code={lobby.code}
           isHost={lobby.isHost}
-          user={user}
+          user={activeUser}
           initialState={lobby.initialState}
-          getToken={getToken}
-          onLeave={handleLeave}
+          getToken={guestUser ? null : getToken}
+          onLeave={guestUser ? handleGuestLeave : handleLeave}
         />
       </>
     );
   }
 
+  // Not logged in — show landing with host + guest options
+  if (!isLoggedIn) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
+        <LoginScreen onLogin={login} onGuestJoin={handleGuestJoin} />
+      </>
+    );
+  }
+
+  // Logged in host — show home screen
   return (
     <>
       <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />

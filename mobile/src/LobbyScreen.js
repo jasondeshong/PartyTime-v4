@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
-  StyleSheet, Alert, Clipboard, Dimensions,
+  StyleSheet, Alert, Clipboard, Dimensions, Linking,
 } from "react-native";
 import socket from "./socket";
 import api from "./api";
@@ -23,6 +23,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [playlistTracks, setPlaylistTracks] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const isGuest = !getToken;
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
 
@@ -122,6 +123,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   }
 
   useEffect(() => {
+    if (isGuest) return;
     if (tab === "liked" && likedSongs.length === 0) loadLikedSongs();
     if (tab === "playlists" && playlists.length === 0) loadPlaylists();
   }, [tab]);
@@ -226,11 +228,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           <View>
             <View style={s.titleRow}>
               <Text style={s.headerTitle}>PartyTime</Text>
-              {isHost && (
+              {isHost ? (
                 <View style={s.hostBadge}>
                   <Text style={s.hostText}>HOST</Text>
                 </View>
-              )}
+              ) : isGuest ? (
+                <View style={s.guestBadge}>
+                  <Text style={s.guestText}>GUEST</Text>
+                </View>
+              ) : null}
             </View>
             <TouchableOpacity onPress={copyCode}>
               <Text style={s.codeText}>{code} <Text style={s.codeTap}>tap to copy</Text></Text>
@@ -266,11 +272,22 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     <Text style={s.npAddedBy}>added by {nowPlaying.addedBy}</Text>
                   )}
                 </View>
-                {isHost && (
-                  <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
-                    <Text style={s.skipText}>Skip</Text>
-                  </TouchableOpacity>
-                )}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  {isHost && (
+                    <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
+                      <Text style={s.skipText}>Skip</Text>
+                    </TouchableOpacity>
+                  )}
+                  {nowPlaying.spotifyId && (
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(`https://open.spotify.com/track/${nowPlaying.spotifyId}`)}
+                      activeOpacity={0.7}
+                      style={s.spotifyLink}
+                    >
+                      <Text style={s.spotifyLinkText}>♫</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </>
           ) : (
@@ -293,7 +310,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
         {/* Tabs */}
         <View style={s.tabs}>
-          {["search", "liked", "playlists"].map((t) => (
+          {(isGuest ? ["search"] : ["search", "liked", "playlists"]).map((t) => (
             <TouchableOpacity
               key={t}
               style={[s.tab, tab === t && s.tabActive]}
@@ -325,8 +342,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </View>
         )}
 
-        {/* Liked Tab */}
-        {tab === "liked" && (
+        {/* Liked Tab (host only) */}
+        {tab === "liked" && !isGuest && (
           <View>
             {loadingLibrary ? (
               <Text style={s.loadingText}>Loading...</Text>
@@ -340,8 +357,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </View>
         )}
 
-        {/* Playlists Tab */}
-        {tab === "playlists" && (
+        {/* Playlists Tab (host only) */}
+        {tab === "playlists" && !isGuest && (
           <View>
             {loadingLibrary ? (
               <Text style={s.loadingText}>Loading...</Text>
@@ -422,6 +439,8 @@ const s = StyleSheet.create({
   headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
   hostBadge: { backgroundColor: "rgba(201,100,66,0.15)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   hostText: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 1 },
+  guestBadge: { backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  guestText: { color: "#888", fontSize: 9, fontWeight: "700", letterSpacing: 1 },
   codeText: { color: "#888", fontSize: 11, fontFamily: "monospace", letterSpacing: 3, marginTop: 2 },
   codeTap: { color: "rgba(136,136,136,0.5)" },
   leaveText: { color: "#888", fontSize: 12 },
@@ -452,6 +471,8 @@ const s = StyleSheet.create({
   npEmptyText: { color: "rgba(136,136,136,0.5)", fontSize: 13, marginBottom: 8 },
   playNextBtn: { backgroundColor: "#c96442", paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
   playNextText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  spotifyLink: { padding: 8 },
+  spotifyLinkText: { color: "#1DB954", fontSize: 18 },
 
   // Tabs
   tabs: {

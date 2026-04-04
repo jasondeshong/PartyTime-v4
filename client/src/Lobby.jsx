@@ -11,13 +11,15 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [volume, setVolume] = useState(80);
+  const [myVotes, setMyVotes] = useState({}); // songId -> "up" | "down"
   const debounceRef = useRef(null);
 
   const handleTrackEnd = useCallback(() => {
     socket.emit("skip", code);
   }, [code]);
 
-  const { isReady, isPlaying, position, duration, play, pause, togglePlay, seek } = useSpotifyPlayer({
+  const { isReady, isPlaying, position, duration, play, pause, togglePlay, seek, player } = useSpotifyPlayer({
     getToken,
     enabled: isHost && user.premium,
     onTrackEnd: handleTrackEnd,
@@ -28,11 +30,15 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     if (isHost && isReady && nowPlaying?.spotifyId) {
       play(`spotify:track:${nowPlaying.spotifyId}`);
     }
-    // Pause when nothing is playing
     if (isHost && isReady && !nowPlaying) {
       pause();
     }
   }, [nowPlaying?.spotifyId, isReady, isHost]);
+
+  // Sync volume with player
+  useEffect(() => {
+    if (player) player.setVolume(volume / 100);
+  }, [volume, player]);
 
   useEffect(() => {
     socket.on("lobby-state", (lobby) => {
@@ -43,12 +49,14 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     socket.on("queue-updated", (q) => setQueue(q));
     socket.on("users-updated", (u) => setUsers(u));
     socket.on("now-playing", (np) => setNowPlaying(np));
+    socket.on("vote-error", () => {}); // silently ignore
 
     return () => {
       socket.off("lobby-state");
       socket.off("queue-updated");
       socket.off("users-updated");
       socket.off("now-playing");
+      socket.off("vote-error");
     };
   }, []);
 
@@ -78,11 +86,20 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   }
 
   function vote(songId, direction) {
+    // Optimistic UI: track local vote state
+    const prev = myVotes[songId];
+    if (prev === direction) return; // already voted this way
+    setMyVotes((v) => ({ ...v, [songId]: direction }));
     socket.emit("vote", { code, songId, direction });
   }
 
   function removeSong(songId) {
     socket.emit("remove-song", { code, songId });
+    setMyVotes((v) => {
+      const next = { ...v };
+      delete next[songId];
+      return next;
+    });
   }
 
   function skip() {
@@ -105,9 +122,9 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const progress = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg p-4 max-w-lg mx-auto">
+    <div className="flex flex-col min-h-screen bg-bg px-4 pt-3 pb-6 max-w-lg mx-auto safe-bottom">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-white tracking-tight">PartyTime</h1>
@@ -134,7 +151,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       </div>
 
       {/* Users */}
-      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+      <div className="flex items-center gap-1.5 mb-4 flex-wrap">
         {users.map((u) => (
           <span
             key={u.id}
@@ -146,12 +163,12 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       </div>
 
       {/* Now Playing */}
-      <div className="mb-5">
+      <div className="mb-4">
         {nowPlaying ? (
           <div className="bg-surface border border-border rounded-xl p-4">
             <div className="flex items-center gap-3 mb-3">
               {nowPlaying.albumArt && (
-                <img src={nowPlaying.albumArt} alt="" className="w-14 h-14 rounded-lg shadow-lg" />
+                <img src={nowPlaying.albumArt} alt="" className="w-14 h-14 rounded-lg shadow-lg flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] text-accent font-semibold uppercase tracking-wider mb-0.5">Now Playing</p>
@@ -164,7 +181,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
               {isHost && (
                 <button
                   onClick={skip}
-                  className="text-muted hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-muted transition"
+                  className="text-muted hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-muted transition flex-shrink-0"
                 >
                   Skip
                 </button>
@@ -176,40 +193,63 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
               <div className="mt-2">
                 {/* Timeline */}
                 <div
-                  className="group relative w-full h-1.5 bg-border rounded-full cursor-pointer mb-2"
+                  className="group relative w-full h-2 bg-border rounded-full cursor-pointer mb-2 touch-none"
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const pct = (e.clientX - rect.left) / rect.width;
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    seek(Math.floor(pct * duration));
+                  }}
+                  onTouchEnd={(e) => {
+                    const touch = e.changedTouches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
                     seek(Math.floor(pct * duration));
                   }}
                 >
                   <div
-                    className="absolute left-0 top-0 h-full bg-accent rounded-full transition-all"
+                    className="absolute left-0 top-0 h-full bg-accent rounded-full"
                     style={{ width: `${progress}%` }}
                   />
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition"
-                    style={{ left: `calc(${progress}% - 6px)` }}
+                    className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition"
+                    style={{ left: `calc(${progress}% - 7px)` }}
                   />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(position)}</span>
                   <button
                     onClick={togglePlay}
-                    className="text-white hover:text-accent transition p-1"
+                    className="text-white hover:text-accent transition p-1 active:scale-95"
                   >
                     {isPlaying ? (
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                         <rect x="6" y="4" width="4" height="16" rx="1" />
                         <rect x="14" y="4" width="4" height="16" rx="1" />
                       </svg>
                     ) : (
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     )}
                   </button>
                   <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(duration)}</span>
+                </div>
+
+                {/* Volume */}
+                <div className="flex items-center gap-2 mt-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
+                    <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                    {volume > 0 && <path d="M15.54 8.46a5 5 0 010 7.07" />}
+                    {volume > 50 && <path d="M19.07 4.93a10 10 0 010 14.14" />}
+                  </svg>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={volume}
+                    onChange={(e) => setVolume(Number(e.target.value))}
+                    className="flex-1 h-1 bg-border rounded-full appearance-none cursor-pointer accent-accent"
+                  />
                 </div>
               </div>
             )}
@@ -228,25 +268,15 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
           </div>
         ) : (
           <div className="bg-surface border border-border rounded-xl p-4 text-center">
-            {queue.length > 0 && isHost ? (
-              <>
-                <p className="text-muted text-sm mb-2">Queue ready</p>
-                <button
-                  onClick={skip}
-                  className="bg-accent hover:bg-accent-hover text-white font-semibold text-sm px-6 py-2 rounded-lg transition"
-                >
-                  Play Next
-                </button>
-              </>
-            ) : (
-              <p className="text-muted/50 text-sm">Nothing playing</p>
-            )}
+            <p className="text-muted/50 text-sm">
+              {queue.length > 0 ? "Queue ready" : "Search and add a song to start"}
+            </p>
           </div>
         )}
       </div>
 
       {/* Search */}
-      <div className="relative mb-5">
+      <div className="relative mb-4">
         <input
           type="text"
           placeholder="Search Spotify..."
@@ -258,7 +288,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
           <div className="absolute right-3 top-3.5 text-muted text-xs">...</div>
         )}
         {results.length > 0 && (
-          <ul className="absolute z-10 w-full mt-1 bg-surface border border-border rounded-xl overflow-hidden shadow-2xl max-h-80 overflow-y-auto">
+          <ul className="absolute z-10 w-full mt-1 bg-surface border border-border rounded-xl overflow-hidden shadow-2xl max-h-72 overflow-y-auto">
             {results.map((song) => (
               <li key={song.spotifyId} className="border-b border-border/50 last:border-0">
                 <button
@@ -293,17 +323,17 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
         )}
       </div>
       {queue.length === 0 ? (
-        <p className="text-muted/40 text-center py-10 text-sm">
-          Search and add songs to get started
+        <p className="text-muted/40 text-center py-8 text-sm">
+          Queue is empty
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {queue.map((song, i) => (
             <li
               key={song.id}
-              className="flex items-center bg-surface rounded-xl px-3 py-2.5 gap-3 group"
+              className="flex items-center bg-surface rounded-xl px-3 py-2.5 gap-2.5 group"
             >
-              <span className="text-muted/40 text-xs w-5 text-center font-mono">
+              <span className="text-muted/40 text-xs w-4 text-center font-mono flex-shrink-0">
                 {i + 1}
               </span>
 
@@ -321,13 +351,13 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                 </p>
               </div>
 
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
                   onClick={() => vote(song.id, "up")}
-                  className="text-muted hover:text-green-400 p-1.5 transition"
+                  className={`p-2 transition ${myVotes[song.id] === "up" ? "text-green-400" : "text-muted hover:text-green-400"}`}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3L3 10h10L8 3z" fill="currentColor"/>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 3L3 10h10L8 3z"/>
                   </svg>
                 </button>
                 <span className="text-white text-xs font-medium w-6 text-center tabular-nums">
@@ -335,10 +365,10 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                 </span>
                 <button
                   onClick={() => vote(song.id, "down")}
-                  className="text-muted hover:text-red-400 p-1.5 transition"
+                  className={`p-2 transition ${myVotes[song.id] === "down" ? "text-red-400" : "text-muted hover:text-red-400"}`}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 13L3 6h10L8 13z" fill="currentColor"/>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 13L3 6h10L8 13z"/>
                   </svg>
                 </button>
               </div>
@@ -346,7 +376,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
               {isHost && (
                 <button
                   onClick={() => removeSong(song.id)}
-                  className="text-muted/30 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                  className="text-muted/30 hover:text-red-400 active:text-red-400 transition md:opacity-0 md:group-hover:opacity-100 flex-shrink-0 p-1"
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M4 4l8 8M12 4l-8 8"/>

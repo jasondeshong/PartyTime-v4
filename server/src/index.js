@@ -54,8 +54,9 @@ async function getSpotifyToken() {
 }
 
 // In-memory state for connected users (transient, not persisted)
-// Lobbies and queues are persisted in Supabase
 const lobbyUsers = new Map(); // code -> [{ id, name }]
+// Track votes per user per song: "lobbyCode:songId" -> Set of socketIds
+const userVotes = new Map();
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -301,11 +302,48 @@ io.on("connection", (socket) => {
     }
 
     const lobby = await getLobby(code);
-    if (lobby) io.to(code).emit("queue-updated", lobby.queue);
+    if (!lobby) return;
+
+    // Auto-play if nothing is playing and this is the first song
+    if (!lobby.nowPlaying && lobby.queue.length === 1) {
+      const firstSong = lobby.queue[0];
+      await supabase.from("queue").delete().eq("id", firstSong.id);
+      await supabase
+        .from("lobbies")
+        .update({ now_playing: firstSong })
+        .eq("code", code);
+
+      const updated = await getLobby(code);
+      io.to(code).emit("now-playing", firstSong);
+      io.to(code).emit("queue-updated", updated?.queue || []);
+    } else {
+      io.to(code).emit("queue-updated", lobby.queue);
+    }
   });
 
   socket.on("vote", async ({ code, songId, direction }) => {
-    const delta = direction === "up" ? 1 : -1;
+    // One vote per user per song
+    const voteKey = `${code}:${songId}`;
+    if (!userVotes.has(voteKey)) userVotes.set(voteKey, new Map());
+    const songVotes = userVotes.get(voteKey);
+
+    const prevDirection = songVotes.get(socket.id);
+
+    // If same direction, ignore (already voted this way)
+    if (prevDirection === direction) {
+      socket.emit("vote-error", "Already voted");
+      return;
+    }
+
+    // Calculate delta: if changing direction, need to undo previous + apply new
+    let delta;
+    if (prevDirection) {
+      // Changing vote: undo old (-1 or +1) and apply new
+      delta = direction === "up" ? 2 : -2;
+    } else {
+      delta = direction === "up" ? 1 : -1;
+    }
+
     const { error } = await supabase.rpc("increment_votes", {
       song_id: songId,
       delta,
@@ -316,12 +354,15 @@ io.on("connection", (socket) => {
       return;
     }
 
+    songVotes.set(socket.id, direction);
+
     const lobby = await getLobby(code);
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
   });
 
   socket.on("remove-song", async ({ code, songId }) => {
     await supabase.from("queue").delete().eq("id", songId);
+    userVotes.delete(`${code}:${songId}`);
     const lobby = await getLobby(code);
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
   });
@@ -334,6 +375,7 @@ io.on("connection", (socket) => {
     if (lobby.queue.length > 0) {
       nowPlaying = lobby.queue[0];
       await supabase.from("queue").delete().eq("id", nowPlaying.id);
+      userVotes.delete(`${code}:${nowPlaying.id}`);
     }
 
     await supabase
@@ -358,7 +400,34 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = 3001;
+// --- Lobby cleanup: delete lobbies older than 24 hours ---
+async function cleanupLobbies() {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: old } = await supabase
+    .from("lobbies")
+    .select("code")
+    .lt("created_at", cutoff);
+
+  if (old && old.length > 0) {
+    const codes = old.map((l) => l.code);
+    await supabase.from("queue").delete().in("lobby_code", codes);
+    await supabase.from("lobbies").delete().in("code", codes);
+    codes.forEach((c) => {
+      lobbyUsers.delete(c);
+      // Clean up vote tracking for this lobby
+      for (const key of userVotes.keys()) {
+        if (key.startsWith(c + ":")) userVotes.delete(key);
+      }
+    });
+    console.log(`Cleaned up ${codes.length} expired lobbies`);
+  }
+}
+
+// Run cleanup every hour
+setInterval(cleanupLobbies, 60 * 60 * 1000);
+cleanupLobbies(); // Run once on startup
+
+const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

@@ -65,7 +65,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     socket.on("vote-error", () => {});
     socket.on("add-error", (msg) => showToast(msg));
     socket.on("add-duplicate", (title) => showToast(`"${title}" is already queued — counted as a vote`));
-    socket.on("song-removed-by-votes", () => showToast("The people have spoken — song removed"));
+    socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
 
     return () => {
       socket.off("lobby-state");

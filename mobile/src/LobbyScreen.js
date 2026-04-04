@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Alert, Clipboard, Dimensions, Linking,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import socket from "./socket";
 import api from "./api";
 
@@ -265,17 +266,17 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   <Image source={{ uri: nowPlaying.albumArt }} style={s.npArt} />
                 )}
                 <View style={s.npInfo}>
-                  <Text style={s.npLabel}>NOW PLAYING</Text>
+                  <Text style={s.npLabel}>"NOW PLAYING"</Text>
                   <Text style={s.npTitle} numberOfLines={1}>{nowPlaying.title}</Text>
                   <Text style={s.npArtist} numberOfLines={1}>{nowPlaying.artist}</Text>
                   {nowPlaying.addedBy && (
-                    <Text style={s.npAddedBy}>added by {nowPlaying.addedBy}</Text>
+                    <Text style={s.npAddedBy}>via {nowPlaying.addedBy}</Text>
                   )}
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                   {isHost && (
                     <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
-                      <Text style={s.skipText}>Skip</Text>
+                      <Text style={s.skipText}>SKIP</Text>
                     </TouchableOpacity>
                   )}
                   {nowPlaying.spotifyId && (
@@ -289,6 +290,21 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   )}
                 </View>
               </View>
+
+              {/* Spotify embed player */}
+              {nowPlaying.spotifyId && (
+                <View style={s.embedContainer}>
+                  <WebView
+                    key={nowPlaying.spotifyId}
+                    source={{ uri: `https://open.spotify.com/embed/track/${nowPlaying.spotifyId}?utm_source=generator&theme=0` }}
+                    style={s.embed}
+                    scrollEnabled={false}
+                    allowsInlineMediaPlayback={true}
+                    mediaPlaybackRequiresUserAction={false}
+                    javaScriptEnabled={true}
+                  />
+                </View>
+              )}
             </>
           ) : (
             <View style={s.npEmpty}>
@@ -458,7 +474,7 @@ const s = StyleSheet.create({
   npRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   npArt: { width: 56, height: 56, borderRadius: 10 },
   npInfo: { flex: 1 },
-  npLabel: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 1.5, marginBottom: 2 },
+  npLabel: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginBottom: 2, fontFamily: "monospace" },
   npTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
   npArtist: { color: "#888", fontSize: 13 },
   npAddedBy: { color: "rgba(136,136,136,0.5)", fontSize: 11, marginTop: 2 },
@@ -473,6 +489,8 @@ const s = StyleSheet.create({
   playNextText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   spotifyLink: { padding: 8 },
   spotifyLinkText: { color: "#1DB954", fontSize: 18 },
+  embedContainer: { marginTop: 12, borderRadius: 14, overflow: "hidden", height: 152 },
+  embed: { flex: 1, backgroundColor: "transparent" },
 
   // Tabs
   tabs: {

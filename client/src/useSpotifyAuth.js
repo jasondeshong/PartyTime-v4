@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import api from "./api";
 
 const TOKEN_KEY = "pt_spotify";
@@ -14,14 +14,32 @@ function getStored() {
 export default function useSpotifyAuth() {
   const [auth, setAuth] = useState(getStored);
   const [loading, setLoading] = useState(true);
+  const exchangingRef = useRef(false);
 
   // Handle OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+    const error = params.get("error");
+
+    if (error) {
+      console.error("Spotify auth error:", error);
+      window.history.replaceState({}, "", "/");
+      setLoading(false);
+      return;
+    }
 
     if (code) {
+      // Immediately clear URL to prevent double-exchange
       window.history.replaceState({}, "", "/");
+
+      // Guard against StrictMode double-fire
+      if (exchangingRef.current) {
+        setLoading(false);
+        return;
+      }
+      exchangingRef.current = true;
+
       (async () => {
         try {
           const res = await api("/api/auth/callback", {
@@ -30,7 +48,9 @@ export default function useSpotifyAuth() {
             body: JSON.stringify({ code }),
           });
           const data = await res.json();
-          if (data.accessToken) {
+          if (data.error) {
+            console.error("Auth callback error:", data.error);
+          } else if (data.accessToken) {
             const session = {
               accessToken: data.accessToken,
               refreshToken: data.refreshToken,
@@ -44,6 +64,7 @@ export default function useSpotifyAuth() {
           console.error("Auth error:", err);
         }
         setLoading(false);
+        exchangingRef.current = false;
       })();
     } else {
       setLoading(false);

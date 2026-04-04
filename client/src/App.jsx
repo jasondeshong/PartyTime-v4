@@ -116,7 +116,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-bg">
-        <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -138,44 +138,44 @@ export default function App() {
   // Host home (logged in via Spotify)
   if (mode === "host" && user) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-4">
-        <div className="flex items-center gap-3 mb-10">
-          {user.image && <img src={user.image} alt="" className="w-8 h-8 rounded-full" />}
-          <span className="text-muted text-sm">{user.name}</span>
-          <button onClick={handleLogout} className="text-muted hover:text-white text-xs underline transition">
-            Logout
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-6">
+        <div className="flex items-center gap-3 mb-16">
+          {user.image && <img src={user.image} alt="" className="w-7 h-7 rounded-full" />}
+          <span className="text-muted/60 text-[12px] font-mono">{user.name}</span>
+          <button onClick={handleLogout} className="text-muted/30 hover:text-white text-[10px] font-mono tracking-wider transition">
+            LOGOUT
           </button>
         </div>
 
-        <h1 className="text-4xl font-bold text-white mb-1 tracking-tight">PartyTime</h1>
-        <p className="text-muted mb-10">Create or join a lobby.</p>
+        <h1 className="text-3xl font-bold text-white mb-1 tracking-tight font-mono">PARTYTIME</h1>
+        <p className="text-muted/40 text-[11px] font-mono tracking-wider mb-14">"CREATE OR JOIN"</p>
 
         <div className="flex flex-col gap-3 w-full max-w-xs">
-          <button onClick={createLobby} className="bg-accent hover:bg-accent-hover text-white font-semibold py-3 rounded-xl transition">
+          <button onClick={createLobby} className="bg-accent hover:bg-accent-hover text-white font-semibold py-3.5 rounded-2xl transition text-sm">
             Create a Lobby
           </button>
 
-          <div className="flex items-center gap-2 my-2">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-muted text-xs">or join one</span>
-            <div className="flex-1 h-px bg-border" />
+          <div className="flex items-center gap-3 my-3">
+            <div className="flex-1 h-px bg-border/50" />
+            <span className="text-muted/30 text-[10px] font-mono tracking-wider">OR</span>
+            <div className="flex-1 h-px bg-border/50" />
           </div>
 
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Lobby code"
+              placeholder="LOBBY CODE"
               value={lobbyCode}
               onChange={(e) => setLobbyCode(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleHostJoin()}
-              className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-white placeholder-muted focus:outline-none focus:border-accent text-center font-mono tracking-widest"
+              className="flex-1 bg-surface border border-border/50 rounded-2xl px-4 py-3.5 text-white placeholder-muted/30 focus:outline-none focus:border-accent/30 text-center font-mono tracking-[0.3em] text-sm"
             />
-            <button onClick={handleHostJoin} className="bg-surface-light hover:bg-border text-white font-semibold py-3 px-6 rounded-xl transition">
+            <button onClick={handleHostJoin} className="bg-surface-light hover:bg-border text-white font-semibold py-3.5 px-6 rounded-2xl transition text-sm">
               Join
             </button>
           </div>
 
-          {error && <p className="text-red-400 text-sm text-center mt-1">{error}</p>}
+          {error && <p className="text-red-400/80 text-[11px] font-mono text-center mt-2 tracking-wide">{error}</p>}
         </div>
       </div>
     );
@@ -183,15 +183,15 @@ export default function App() {
 
   // Landing page — choose host or guest
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-4">
-      <h1 className="text-4xl font-bold text-white mb-1 tracking-tight">PartyTime</h1>
-      <p className="text-muted mb-10">Collaborative playlists, democratized.</p>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-6">
+      <h1 className="text-3xl font-bold text-white mb-1 tracking-tight font-mono">PARTYTIME</h1>
+      <p className="text-muted/40 text-[11px] font-mono tracking-wider mb-14">"COLLABORATIVE PLAYLISTS, DEMOCRATIZED"</p>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
         {/* Host option */}
         <button
           onClick={login}
-          className="flex items-center justify-center gap-3 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold py-3 rounded-xl transition"
+          className="flex items-center justify-center gap-3 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold py-3.5 rounded-2xl transition text-sm"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
@@ -199,10 +199,10 @@ export default function App() {
           Host with Spotify
         </button>
 
-        <div className="flex items-center gap-2 my-2">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-muted text-xs">or join as guest</span>
-          <div className="flex-1 h-px bg-border" />
+        <div className="flex items-center gap-3 my-3">
+          <div className="flex-1 h-px bg-border/50" />
+          <span className="text-muted/30 text-[10px] font-mono tracking-wider">OR JOIN AS GUEST</span>
+          <div className="flex-1 h-px bg-border/50" />
         </div>
 
         {/* Guest option */}
@@ -211,26 +211,26 @@ export default function App() {
           placeholder="Your name"
           value={guestName}
           onChange={(e) => setGuestName(e.target.value)}
-          className="bg-surface border border-border rounded-xl px-4 py-3 text-white placeholder-muted focus:outline-none focus:border-accent text-center"
+          className="bg-surface border border-border/50 rounded-2xl px-4 py-3.5 text-white placeholder-muted/30 focus:outline-none focus:border-accent/30 text-center text-sm"
         />
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Lobby code"
+            placeholder="LOBBY CODE"
             value={lobbyCode}
             onChange={(e) => setLobbyCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleJoinAsGuest()}
-            className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-white placeholder-muted focus:outline-none focus:border-accent text-center font-mono tracking-widest"
+            className="flex-1 bg-surface border border-border/50 rounded-2xl px-4 py-3.5 text-white placeholder-muted/30 focus:outline-none focus:border-accent/30 text-center font-mono tracking-[0.3em] text-sm"
           />
           <button
             onClick={handleJoinAsGuest}
-            className="bg-surface-light hover:bg-border text-white font-semibold py-3 px-6 rounded-xl transition"
+            className="bg-surface-light hover:bg-border text-white font-semibold py-3.5 px-6 rounded-2xl transition text-sm"
           >
             Join
           </button>
         </div>
 
-        {error && <p className="text-red-400 text-sm text-center mt-1">{error}</p>}
+        {error && <p className="text-red-400/80 text-[11px] font-mono text-center mt-2 tracking-wide">{error}</p>}
       </div>
     </div>
   );

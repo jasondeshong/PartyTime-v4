@@ -382,7 +382,7 @@ io.on("connection", (socket) => {
     // Check if already played in this lobby
     const played = playedSongs.get(code);
     if (played && played.has(song.spotifyId)) {
-      socket.emit("add-error", `"${song.title || "This song"}" already played this session — try another!`);
+      socket.emit("add-error", `"${song.title || "This song"}" already had its moment — available again next session`);
       return;
     }
 
@@ -412,7 +412,7 @@ io.on("connection", (socket) => {
 
     // Also check if currently playing
     if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
-      socket.emit("add-error", "This one's playing right now — enjoy it!");
+      socket.emit("add-error", "Playing right now — just listen");
       return;
     }
 

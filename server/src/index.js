@@ -412,7 +412,7 @@ io.on("connection", (socket) => {
 
     // Also check if currently playing
     if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
-      socket.emit("add-error", "This song is currently playing — sit tight");
+      socket.emit("add-error", "This song is currently playing");
       return;
     }
 

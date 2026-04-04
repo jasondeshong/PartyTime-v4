@@ -257,8 +257,9 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
             {results.map((song) => (
               <li key={song.spotifyId} className="border-b border-border/50 last:border-0">
                 <button
-                  onClick={() => addSong(song)}
-                  className="w-full text-left px-3 py-2.5 hover:bg-surface-light transition flex items-center gap-3"
+                  onMouseDown={(e) => { e.preventDefault(); addSong(song); }}
+                  onTouchEnd={(e) => { e.preventDefault(); addSong(song); }}
+                  className="w-full text-left px-3 py-2.5 hover:bg-surface-light active:bg-surface-light transition flex items-center gap-3"
                 >
                   {song.albumArt && (
                     <img src={song.albumArt} alt="" className="w-10 h-10 rounded-md flex-shrink-0" />

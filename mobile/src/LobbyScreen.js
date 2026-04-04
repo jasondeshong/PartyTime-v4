@@ -3,7 +3,6 @@ import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Alert, Clipboard, Dimensions, Linking,
 } from "react-native";
-import { WebView } from "react-native-webview";
 import socket from "./socket";
 import api from "./api";
 
@@ -44,8 +43,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.on("users-updated", (u) => setUsers(u));
     socket.on("now-playing", (np) => setNowPlaying(np));
     socket.on("add-error", (msg) => showToast(msg));
-    socket.on("add-duplicate", (title) => showToast(`"${title}" — voted up`));
-    socket.on("song-removed-by-votes", () => showToast("Song removed by votes"));
+    socket.on("add-duplicate", (title) => showToast(`"${title}" is already queued — counted as a vote`));
+    socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
 
     return () => {
       socket.off("lobby-state");
@@ -228,15 +227,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         <View style={s.header}>
           <View>
             <View style={s.titleRow}>
-              <Text style={s.headerTitle}>PartyTime</Text>
+              <Text style={s.headerTitle}>PARTYTIME</Text>
               {isHost ? (
-                <View style={s.hostBadge}>
-                  <Text style={s.hostText}>HOST</Text>
-                </View>
+                <Text style={s.hostLabel}>"HOST"</Text>
               ) : isGuest ? (
-                <View style={s.guestBadge}>
-                  <Text style={s.guestText}>GUEST</Text>
-                </View>
+                <Text style={s.guestLabel}>"GUEST"</Text>
               ) : null}
             </View>
             <TouchableOpacity onPress={copyCode}>
@@ -244,7 +239,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             </TouchableOpacity>
           </View>
           <TouchableOpacity onPress={onLeave}>
-            <Text style={s.leaveText}>Leave</Text>
+            <Text style={s.leaveText}>LEAVE</Text>
           </TouchableOpacity>
         </View>
 
@@ -273,36 +268,47 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     <Text style={s.npAddedBy}>via {nowPlaying.addedBy}</Text>
                   )}
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {isHost && (
-                    <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
-                      <Text style={s.skipText}>SKIP</Text>
-                    </TouchableOpacity>
-                  )}
-                  {nowPlaying.spotifyId && (
-                    <TouchableOpacity
-                      onPress={() => Linking.openURL(`https://open.spotify.com/track/${nowPlaying.spotifyId}`)}
-                      activeOpacity={0.7}
-                      style={s.spotifyLink}
-                    >
-                      <Text style={s.spotifyLinkText}>♫</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                {isHost && (
+                  <TouchableOpacity style={s.skipBtn} onPress={skip} activeOpacity={0.7}>
+                    <Text style={s.skipText}>SKIP</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {/* Spotify embed player */}
-              {nowPlaying.spotifyId && (
-                <View style={s.embedContainer}>
-                  <WebView
-                    key={nowPlaying.spotifyId}
-                    source={{ uri: `https://open.spotify.com/embed/track/${nowPlaying.spotifyId}?utm_source=generator&theme=0` }}
-                    style={s.embed}
-                    scrollEnabled={false}
-                    allowsInlineMediaPlayback={true}
-                    mediaPlaybackRequiresUserAction={false}
-                    javaScriptEnabled={true}
-                  />
+              {/* Play / Pause controls */}
+              {nowPlaying.spotifyId && !isGuest && (
+                <View style={s.playerControls}>
+                  <TouchableOpacity
+                    style={s.playBtn}
+                    onPress={async () => {
+                      try {
+                        const token = await getToken();
+                        await fetch("https://api.spotify.com/v1/me/player/play", {
+                          method: "PUT",
+                          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+                        });
+                      } catch { showToast("Open Spotify to connect a device"); }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.playBtnIcon}>▶</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.pauseBtn}
+                    onPress={async () => {
+                      try {
+                        const token = await getToken();
+                        await fetch("https://api.spotify.com/v1/me/player/pause", {
+                          method: "PUT",
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                      } catch {}
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={s.pauseBtnIcon}>❚❚</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </>
@@ -310,7 +316,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             <View style={s.npEmpty}>
               {queue.length > 0 && isHost ? (
                 <>
-                  <Text style={s.npEmptyText}>Queue ready</Text>
+                  <Text style={s.npEmptyLabel}>"QUEUE READY"</Text>
                   <TouchableOpacity style={s.playNextBtn} onPress={skip} activeOpacity={0.8}>
                     <Text style={s.playNextText}>Play Next</Text>
                   </TouchableOpacity>
@@ -417,13 +423,13 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
         {/* Queue */}
         <View style={s.queueHeader}>
-          <Text style={s.queueLabel}>UP NEXT</Text>
+          <Text style={s.queueLabel}>"UP NEXT"</Text>
           {queue.length > 0 && (
             <Text style={s.queueCount}>{queue.length} track{queue.length !== 1 ? "s" : ""}</Text>
           )}
         </View>
         {queue.length === 0 ? (
-          <Text style={s.emptyText}>Queue is empty</Text>
+          <Text style={s.emptyText}>Nothing here yet</Text>
         ) : (
           queue.map((song, i) => (
             <QueueItem key={song.id} song={song} index={i} />
@@ -444,107 +450,114 @@ const s = StyleSheet.create({
   // Toast
   toast: {
     position: "absolute", top: 50, left: 20, right: 20, zIndex: 100,
-    backgroundColor: "#161616", borderWidth: 1, borderColor: "#2a2a2a",
-    borderRadius: 14, padding: 12, alignItems: "center",
+    backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
+    borderRadius: 20, padding: 14, alignItems: "center",
   },
-  toastText: { color: "#fff", fontSize: 13 },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "300", letterSpacing: 0.3 },
 
   // Header
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerTitle: { color: "#fff", fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  hostBadge: { backgroundColor: "rgba(201,100,66,0.15)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  hostText: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 1 },
-  guestBadge: { backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  guestText: { color: "#888", fontSize: 9, fontWeight: "700", letterSpacing: 1 },
-  codeText: { color: "#888", fontSize: 11, fontFamily: "monospace", letterSpacing: 3, marginTop: 2 },
-  codeTap: { color: "rgba(136,136,136,0.5)" },
-  leaveText: { color: "#888", fontSize: 12 },
+  headerTitle: { color: "#fff", fontSize: 18, fontWeight: "800", fontFamily: "monospace", letterSpacing: 1 },
+  hostLabel: { color: "#c96442", fontSize: 9, fontFamily: "monospace", letterSpacing: 2 },
+  guestLabel: { color: "rgba(136,136,136,0.6)", fontSize: 9, fontFamily: "monospace", letterSpacing: 2 },
+  codeText: { color: "rgba(136,136,136,0.6)", fontSize: 11, fontFamily: "monospace", letterSpacing: 4, marginTop: 4 },
+  codeTap: { color: "rgba(136,136,136,0.3)" },
+  leaveText: { color: "rgba(136,136,136,0.5)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1.5 },
 
   // Users
-  usersRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 },
-  userChip: { backgroundColor: "#161616", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  userChipText: { color: "#888", fontSize: 11 },
+  usersRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 20 },
+  userChip: { backgroundColor: "#161616", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  userChipText: { color: "rgba(136,136,136,0.7)", fontSize: 10, fontFamily: "monospace", letterSpacing: 0.5 },
 
   // Now Playing
   nowPlaying: {
-    backgroundColor: "#161616", borderWidth: 1, borderColor: "#2a2a2a",
-    borderRadius: 14, padding: 16, marginBottom: 16,
+    backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
+    borderRadius: 20, padding: 16, marginBottom: 20,
   },
   npRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  npArt: { width: 56, height: 56, borderRadius: 10 },
+  npArt: { width: 56, height: 56, borderRadius: 14 },
   npInfo: { flex: 1 },
-  npLabel: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginBottom: 2, fontFamily: "monospace" },
+  npLabel: { color: "#c96442", fontSize: 9, fontWeight: "700", letterSpacing: 2, marginBottom: 3, fontFamily: "monospace" },
   npTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  npArtist: { color: "#888", fontSize: 13 },
-  npAddedBy: { color: "rgba(136,136,136,0.5)", fontSize: 11, marginTop: 2 },
+  npArtist: { color: "rgba(136,136,136,0.7)", fontSize: 13 },
+  npAddedBy: { color: "rgba(136,136,136,0.3)", fontSize: 11, marginTop: 2, fontFamily: "monospace" },
   skipBtn: {
-    borderWidth: 1, borderColor: "#2a2a2a", borderRadius: 10,
+    borderWidth: 1, borderColor: "rgba(42,42,42,0.5)", borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 8,
   },
-  skipText: { color: "#888", fontSize: 13, fontWeight: "500" },
-  npEmpty: { alignItems: "center" },
-  npEmptyText: { color: "rgba(136,136,136,0.5)", fontSize: 13, marginBottom: 8 },
-  playNextBtn: { backgroundColor: "#c96442", paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
+  skipText: { color: "rgba(136,136,136,0.6)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1.5 },
+  playerControls: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 },
+  playBtn: {
+    flex: 1, backgroundColor: "#c96442", borderRadius: 14,
+    paddingVertical: 12, alignItems: "center", justifyContent: "center",
+    flexDirection: "row", gap: 8,
+  },
+  playBtnIcon: { color: "#fff", fontSize: 14 },
+  pauseBtn: {
+    backgroundColor: "rgba(42,42,42,0.5)", borderRadius: 14,
+    paddingVertical: 12, paddingHorizontal: 20, alignItems: "center",
+  },
+  pauseBtnIcon: { color: "rgba(136,136,136,0.7)", fontSize: 12 },
+  npEmpty: { alignItems: "center", paddingVertical: 8 },
+  npEmptyLabel: { color: "rgba(136,136,136,0.4)", fontSize: 11, fontFamily: "monospace", letterSpacing: 2, marginBottom: 12 },
+  npEmptyText: { color: "rgba(136,136,136,0.3)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, marginBottom: 8 },
+  playNextBtn: { backgroundColor: "#c96442", paddingHorizontal: 32, paddingVertical: 12, borderRadius: 14 },
   playNextText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  spotifyLink: { padding: 8 },
-  spotifyLinkText: { color: "#1DB954", fontSize: 18 },
-  embedContainer: { marginTop: 12, borderRadius: 14, overflow: "hidden", height: 152 },
-  embed: { flex: 1, backgroundColor: "transparent" },
 
   // Tabs
   tabs: {
-    flexDirection: "row", backgroundColor: "#161616", borderRadius: 14,
+    flexDirection: "row", backgroundColor: "#161616", borderRadius: 20,
     padding: 4, marginBottom: 12, gap: 4,
   },
-  tab: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center" },
+  tab: { flex: 1, paddingVertical: 8, borderRadius: 14, alignItems: "center" },
   tabActive: { backgroundColor: "#222" },
-  tabText: { color: "#888", fontSize: 12, fontWeight: "500" },
+  tabText: { color: "rgba(136,136,136,0.5)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1 },
   tabTextActive: { color: "#fff" },
 
   // Search
   searchInput: {
-    backgroundColor: "#161616", borderWidth: 1, borderColor: "#2a2a2a",
-    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+    backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
+    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 14,
     color: "#fff", fontSize: 14, marginBottom: 8,
   },
-  searchingText: { color: "#888", fontSize: 12, textAlign: "center", paddingVertical: 8 },
+  searchingText: { color: "rgba(136,136,136,0.4)", fontSize: 12, fontFamily: "monospace", textAlign: "center", paddingVertical: 8 },
 
-  // Song rows (search results, liked, playlists)
+  // Song rows
   songRow: {
     flexDirection: "row", alignItems: "center", gap: 12,
     paddingVertical: 10, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: "rgba(42,42,42,0.5)",
+    borderBottomWidth: 1, borderBottomColor: "rgba(42,42,42,0.3)",
   },
-  songArt: { width: 40, height: 40, borderRadius: 8 },
+  songArt: { width: 40, height: 40, borderRadius: 12 },
   songInfo: { flex: 1 },
   songTitle: { color: "#fff", fontSize: 14 },
-  songArtist: { color: "#888", fontSize: 12 },
-  songDuration: { color: "rgba(136,136,136,0.5)", fontSize: 11 },
+  songArtist: { color: "rgba(136,136,136,0.5)", fontSize: 12 },
+  songDuration: { color: "rgba(136,136,136,0.25)", fontSize: 10, fontFamily: "monospace" },
 
   // Queue
-  queueHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8, marginBottom: 12 },
-  queueLabel: { color: "#888", fontSize: 12, fontWeight: "700", letterSpacing: 1.5 },
-  queueCount: { color: "rgba(136,136,136,0.5)", fontSize: 11 },
+  queueHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 12 },
+  queueLabel: { color: "rgba(136,136,136,0.5)", fontSize: 9, fontFamily: "monospace", letterSpacing: 2 },
+  queueCount: { color: "rgba(136,136,136,0.3)", fontSize: 10, fontFamily: "monospace" },
   queueItem: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: "#161616", borderRadius: 14,
+    backgroundColor: "#161616", borderRadius: 20,
     paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6,
   },
-  queueNum: { color: "rgba(136,136,136,0.4)", fontSize: 11, width: 16, textAlign: "center", fontFamily: "monospace" },
-  addedBy: { color: "rgba(136,136,136,0.4)" },
+  queueNum: { color: "rgba(136,136,136,0.25)", fontSize: 10, width: 16, textAlign: "center", fontFamily: "monospace" },
+  addedBy: { color: "rgba(136,136,136,0.25)", fontFamily: "monospace" },
   voteGroup: { flexDirection: "row", alignItems: "center", gap: 2 },
   voteBtn: { padding: 8 },
-  voteArrow: { color: "#888", fontSize: 12 },
-  voteUp: { color: "#4ade80" },
+  voteArrow: { color: "rgba(136,136,136,0.3)", fontSize: 11 },
+  voteUp: { color: "#c96442" },
   voteDown: { color: "#f87171" },
-  voteCount: { color: "#fff", fontSize: 12, fontWeight: "600", width: 24, textAlign: "center" },
+  voteCount: { color: "rgba(255,255,255,0.8)", fontSize: 11, fontFamily: "monospace", width: 20, textAlign: "center" },
   removeBtn: { padding: 6 },
-  removeText: { color: "rgba(136,136,136,0.3)", fontSize: 12 },
+  removeText: { color: "rgba(136,136,136,0.2)", fontSize: 12 },
 
   // Shared
-  loadingText: { color: "#888", fontSize: 13, textAlign: "center", paddingVertical: 32 },
-  emptyText: { color: "rgba(136,136,136,0.4)", fontSize: 13, textAlign: "center", paddingVertical: 32 },
+  loadingText: { color: "rgba(136,136,136,0.4)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, textAlign: "center", paddingVertical: 40 },
+  emptyText: { color: "rgba(136,136,136,0.2)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, textAlign: "center", paddingVertical: 40 },
   backBtn: { paddingVertical: 8, marginBottom: 4 },
-  backText: { color: "#888", fontSize: 13 },
+  backText: { color: "rgba(136,136,136,0.5)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1 },
 });

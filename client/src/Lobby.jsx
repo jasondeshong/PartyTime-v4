@@ -254,8 +254,8 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
               </div>
             )}
 
-            {/* Spotify embed fallback for non-premium or non-host */}
-            {nowPlaying.spotifyId && (!isHost || !user.premium) && (
+            {/* Spotify embed: show for non-host, non-premium, or when SDK not ready (mobile) */}
+            {nowPlaying.spotifyId && (!isHost || !user.premium || !isReady) && (
               <iframe
                 src={`https://open.spotify.com/embed/track/${nowPlaying.spotifyId}?utm_source=generator&theme=0`}
                 width="100%"

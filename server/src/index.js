@@ -92,8 +92,11 @@ app.get("/api/auth/login", (_req, res) => {
 
 // Spotify OAuth: exchange code for tokens
 app.post("/api/auth/callback", async (req, res) => {
-  const { code } = req.body;
+  const { code, redirectUri } = req.body;
   if (!code) return res.status(400).json({ error: "Missing code" });
+
+  // Use provided redirectUri (mobile) or fall back to env (web)
+  const callbackUri = redirectUri || process.env.SPOTIFY_REDIRECT_URI;
 
   try {
     const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
@@ -111,7 +114,7 @@ app.post("/api/auth/callback", async (req, res) => {
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+        redirect_uri: callbackUri,
       }),
     });
     const tokens = await tokenRes.json();

@@ -29,7 +29,7 @@ export default function useAuth() {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: "partytime" });
+  const redirectUri = AuthSession.makeRedirectUri({ scheme: "partytime", path: "callback" });
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {

@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSpotifyAuth from "./useSpotifyAuth";
 import socket from "./socket";
 import api from "./api";
 import Lobby from "./Lobby";
+
+const LOBBY_KEY = "pt_lobby";
+
+function getSavedLobby() {
+  try {
+    return JSON.parse(sessionStorage.getItem(LOBBY_KEY));
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const { user, loading, login, logout, getToken, isLoggedIn } = useSpotifyAuth();
@@ -12,20 +22,31 @@ export default function App() {
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState("");
 
+  // Rejoin lobby on refresh
+  useEffect(() => {
+    if (!isLoggedIn || !user) return;
+    const saved = getSavedLobby();
+    if (saved) {
+      joinLobby(saved.code, saved.isHost);
+    }
+  }, [isLoggedIn, user]);
+
   function joinLobby(code, host) {
     setError("");
-    socket.connect();
+    if (!socket.connected) socket.connect();
     socket.emit("join-lobby", { code, name: user.name });
 
     socket.once("error", (msg) => {
       setError(msg);
       socket.disconnect();
+      sessionStorage.removeItem(LOBBY_KEY);
     });
 
     socket.once("lobby-state", (lobby) => {
       setInitialState(lobby);
       setIsHost(host);
       setActiveLobby(code);
+      sessionStorage.setItem(LOBBY_KEY, JSON.stringify({ code, isHost: host }));
     });
   }
 
@@ -44,6 +65,13 @@ export default function App() {
     const code = lobbyCode.trim().toUpperCase();
     if (!code) return;
     joinLobby(code, false);
+  }
+
+  function handleLeave() {
+    socket.disconnect();
+    setActiveLobby(null);
+    setInitialState(null);
+    sessionStorage.removeItem(LOBBY_KEY);
   }
 
   if (loading) {
@@ -83,11 +111,7 @@ export default function App() {
         user={user}
         initialState={initialState}
         getToken={getToken}
-        onLeave={() => {
-          socket.disconnect();
-          setActiveLobby(null);
-          setInitialState(null);
-        }}
+        onLeave={handleLeave}
       />
     );
   }

@@ -53,22 +53,24 @@ async function getSpotifyToken() {
   return spotifyToken;
 }
 
-// In-memory state for connected users (transient, not persisted)
+// In-memory state
 const lobbyUsers = new Map(); // code -> [{ id, name }]
-// Track votes per user per song: "lobbyCode:songId" -> Set of socketIds
-const userVotes = new Map();
+const userVotes = new Map(); // "code:songId" -> Map(socketId -> "up"|"down")
+const playedSongs = new Map(); // code -> Set of spotifyIds (tracks already played)
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// Spotify OAuth scopes
 const SPOTIFY_SCOPES = [
   "streaming",
   "user-read-email",
   "user-read-private",
   "user-modify-playback-state",
   "user-read-playback-state",
+  "user-library-read",
+  "playlist-read-private",
+  "playlist-read-collaborative",
 ].join(" ");
 
 // --- REST routes ---
@@ -118,7 +120,6 @@ app.post("/api/auth/callback", async (req, res) => {
       return res.status(400).json({ error: tokens.error_description });
     }
 
-    // Fetch user profile
     const profileRes = await fetch("https://api.spotify.com/v1/me", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
@@ -203,6 +204,95 @@ app.get("/api/spotify/search", async (req, res) => {
   }
 });
 
+// Get user's liked songs (requires user token)
+app.get("/api/spotify/liked", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+
+  try {
+    const offset = req.query.offset || 0;
+    const spotRes = await fetch(
+      `https://api.spotify.com/v1/me/tracks?limit=20&offset=${offset}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await spotRes.json();
+    const tracks = (data.items || []).map((item) => {
+      const t = item.track;
+      return {
+        spotifyId: t.id,
+        title: t.name,
+        artist: t.artists.map((a) => a.name).join(", "),
+        album: t.album.name,
+        albumArt: t.album.images[1]?.url || t.album.images[0]?.url || "",
+        previewUrl: t.preview_url,
+        duration: t.duration_ms,
+      };
+    });
+    res.json({ tracks, total: data.total, hasMore: data.next !== null });
+  } catch (err) {
+    console.error("Liked songs error:", err);
+    res.status(500).json({ error: "Failed to fetch liked songs" });
+  }
+});
+
+// Get user's playlists
+app.get("/api/spotify/playlists", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+
+  try {
+    const spotRes = await fetch(
+      "https://api.spotify.com/v1/me/playlists?limit=50",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await spotRes.json();
+    const playlists = (data.items || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      image: p.images?.[0]?.url || "",
+      trackCount: p.tracks.total,
+      owner: p.owner.display_name,
+    }));
+    res.json({ playlists });
+  } catch (err) {
+    console.error("Playlists error:", err);
+    res.status(500).json({ error: "Failed to fetch playlists" });
+  }
+});
+
+// Get tracks from a playlist
+app.get("/api/spotify/playlists/:id/tracks", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+
+  try {
+    const offset = req.query.offset || 0;
+    const spotRes = await fetch(
+      `https://api.spotify.com/v1/playlists/${req.params.id}/tracks?limit=20&offset=${offset}&fields=items(track(id,name,artists,album,duration_ms,preview_url)),total,next`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await spotRes.json();
+    const tracks = (data.items || [])
+      .filter((item) => item.track)
+      .map((item) => {
+        const t = item.track;
+        return {
+          spotifyId: t.id,
+          title: t.name,
+          artist: t.artists.map((a) => a.name).join(", "),
+          album: t.album.name,
+          albumArt: t.album.images?.[1]?.url || t.album.images?.[0]?.url || "",
+          previewUrl: t.preview_url,
+          duration: t.duration_ms,
+        };
+      });
+    res.json({ tracks, total: data.total, hasMore: data.next !== null });
+  } catch (err) {
+    console.error("Playlist tracks error:", err);
+    res.status(500).json({ error: "Failed to fetch playlist tracks" });
+  }
+});
+
 // Create lobby
 app.post("/api/lobbies", async (_req, res) => {
   const code = generateCode();
@@ -216,6 +306,7 @@ app.post("/api/lobbies", async (_req, res) => {
   }
 
   lobbyUsers.set(code, []);
+  playedSongs.set(code, new Set());
   res.json({ code });
 });
 
@@ -275,17 +366,58 @@ io.on("connection", (socket) => {
       users.push({ id: socket.id, name });
     }
 
+    if (!playedSongs.has(code)) playedSongs.set(code, new Set());
+
     lobby.users = users;
     socket.emit("lobby-state", lobby);
     io.to(code).emit("users-updated", users);
   });
 
   socket.on("add-song", async ({ code, song }) => {
+    if (!song.spotifyId) return;
+
+    // Check if already played in this lobby
+    const played = playedSongs.get(code);
+    if (played && played.has(song.spotifyId)) {
+      socket.emit("add-error", "This song was already played");
+      return;
+    }
+
+    // Check if already in queue — upvote instead
+    const lobby = await getLobby(code);
+    if (!lobby) return;
+
+    const existing = lobby.queue.find((s) => s.spotifyId === song.spotifyId);
+    if (existing) {
+      // Treat as upvote
+      const voteKey = `${code}:${existing.id}`;
+      if (!userVotes.has(voteKey)) userVotes.set(voteKey, new Map());
+      const songVotes = userVotes.get(voteKey);
+
+      if (songVotes.get(socket.id) !== "up") {
+        const prev = songVotes.get(socket.id);
+        const delta = prev ? 2 : 1;
+        await supabase.rpc("increment_votes", { song_id: existing.id, delta });
+        songVotes.set(socket.id, "up");
+      }
+
+      const updated = await getLobby(code);
+      if (updated) io.to(code).emit("queue-updated", updated.queue);
+      socket.emit("add-duplicate", existing.title);
+      return;
+    }
+
+    // Also check if currently playing
+    if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
+      socket.emit("add-error", "This song is currently playing");
+      return;
+    }
+
     const id = crypto.randomUUID();
     const { error } = await supabase.from("queue").insert({
       id,
       lobby_code: code,
-      spotify_id: song.spotifyId || null,
+      spotify_id: song.spotifyId,
       title: song.title,
       artist: song.artist,
       album: song.album || null,
@@ -301,44 +433,42 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const lobby = await getLobby(code);
-    if (!lobby) return;
+    const refreshed = await getLobby(code);
+    if (!refreshed) return;
 
     // Auto-play if nothing is playing and this is the first song
-    if (!lobby.nowPlaying && lobby.queue.length === 1) {
-      const firstSong = lobby.queue[0];
+    if (!refreshed.nowPlaying && refreshed.queue.length === 1) {
+      const firstSong = refreshed.queue[0];
       await supabase.from("queue").delete().eq("id", firstSong.id);
       await supabase
         .from("lobbies")
         .update({ now_playing: firstSong })
         .eq("code", code);
 
+      if (played) played.add(firstSong.spotifyId);
+
       const updated = await getLobby(code);
       io.to(code).emit("now-playing", firstSong);
       io.to(code).emit("queue-updated", updated?.queue || []);
     } else {
-      io.to(code).emit("queue-updated", lobby.queue);
+      io.to(code).emit("queue-updated", refreshed.queue);
     }
   });
 
   socket.on("vote", async ({ code, songId, direction }) => {
-    // One vote per user per song
     const voteKey = `${code}:${songId}`;
     if (!userVotes.has(voteKey)) userVotes.set(voteKey, new Map());
     const songVotes = userVotes.get(voteKey);
 
     const prevDirection = songVotes.get(socket.id);
 
-    // If same direction, ignore (already voted this way)
     if (prevDirection === direction) {
       socket.emit("vote-error", "Already voted");
       return;
     }
 
-    // Calculate delta: if changing direction, need to undo previous + apply new
     let delta;
     if (prevDirection) {
-      // Changing vote: undo old (-1 or +1) and apply new
       delta = direction === "up" ? 2 : -2;
     } else {
       delta = direction === "up" ? 1 : -1;
@@ -355,6 +485,25 @@ io.on("connection", (socket) => {
     }
 
     songVotes.set(socket.id, direction);
+
+    // Check for auto-remove: if downvotes >= 50% of lobby users, remove song
+    const users = lobbyUsers.get(code) || [];
+    const threshold = Math.ceil(users.length / 2);
+    let downvoteCount = 0;
+    for (const dir of songVotes.values()) {
+      if (dir === "down") downvoteCount++;
+    }
+
+    if (downvoteCount >= threshold && users.length >= 2) {
+      await supabase.from("queue").delete().eq("id", songId);
+      userVotes.delete(voteKey);
+      const lobby = await getLobby(code);
+      if (lobby) {
+        io.to(code).emit("queue-updated", lobby.queue);
+        io.to(code).emit("song-removed-by-votes", songId);
+      }
+      return;
+    }
 
     const lobby = await getLobby(code);
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
@@ -376,6 +525,12 @@ io.on("connection", (socket) => {
       nowPlaying = lobby.queue[0];
       await supabase.from("queue").delete().eq("id", nowPlaying.id);
       userVotes.delete(`${code}:${nowPlaying.id}`);
+    }
+
+    // Track played song
+    if (nowPlaying?.spotifyId) {
+      const played = playedSongs.get(code);
+      if (played) played.add(nowPlaying.spotifyId);
     }
 
     await supabase
@@ -414,7 +569,7 @@ async function cleanupLobbies() {
     await supabase.from("lobbies").delete().in("code", codes);
     codes.forEach((c) => {
       lobbyUsers.delete(c);
-      // Clean up vote tracking for this lobby
+      playedSongs.delete(c);
       for (const key of userVotes.keys()) {
         if (key.startsWith(c + ":")) userVotes.delete(key);
       }
@@ -423,9 +578,8 @@ async function cleanupLobbies() {
   }
 }
 
-// Run cleanup every hour
 setInterval(cleanupLobbies, 60 * 60 * 1000);
-cleanupLobbies(); // Run once on startup
+cleanupLobbies();
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {

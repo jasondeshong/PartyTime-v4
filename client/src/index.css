@@ -14,3 +14,12 @@ input[type="range"]::-webkit-slider-thumb {
   background: #c96442;
   cursor: pointer;
 }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}

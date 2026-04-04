@@ -283,12 +283,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     onPress={async () => {
                       try {
                         const token = await getToken();
-                        await fetch("https://api.spotify.com/v1/me/player/play", {
+                        const res = await fetch("https://api.spotify.com/v1/me/player/play", {
                           method: "PUT",
                           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
                           body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
                         });
-                      } catch { showToast("Open Spotify to connect a device"); }
+                        if (res.status === 404) showToast("Open Spotify first, then tap play");
+                        else if (res.status === 403) showToast("Spotify Premium required for playback");
+                        else if (!res.ok && res.status !== 204) showToast("Couldn't start playback");
+                      } catch { showToast("Open Spotify first, then tap play"); }
                     }}
                     activeOpacity={0.8}
                   >

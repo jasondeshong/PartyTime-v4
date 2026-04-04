@@ -309,7 +309,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                 width="100%"
                 height="152"
                 allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                loading="lazy"
+                loading="eager"
                 className="rounded-xl"
               />
             )}

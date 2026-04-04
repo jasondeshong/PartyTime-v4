@@ -13,7 +13,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [copied, setCopied] = useState(false);
   const debounceRef = useRef(null);
 
-  const { isReady, play } = useSpotifyPlayer({
+  const { isReady, isPlaying, position, duration, play, pause, togglePlay, seek } = useSpotifyPlayer({
     getToken,
     enabled: isHost && user.premium,
   });
@@ -22,6 +22,10 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   useEffect(() => {
     if (isHost && isReady && nowPlaying?.spotifyId) {
       play(`spotify:track:${nowPlaying.spotifyId}`);
+    }
+    // Pause when nothing is playing
+    if (isHost && isReady && !nowPlaying) {
+      pause();
     }
   }, [nowPlaying?.spotifyId, isReady, isHost]);
 
@@ -87,11 +91,13 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   }
 
   function formatDuration(ms) {
-    if (!ms) return "";
+    if (!ms) return "0:00";
     const min = Math.floor(ms / 60000);
     const sec = Math.floor((ms % 60000) / 1000);
     return `${min}:${sec.toString().padStart(2, "0")}`;
   }
+
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
     <div className="flex flex-col min-h-screen bg-bg p-4 max-w-lg mx-auto">
@@ -159,6 +165,50 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
                 </button>
               )}
             </div>
+
+            {/* Playback controls for host with Premium */}
+            {isHost && user.premium && isReady && (
+              <div className="mt-2">
+                {/* Timeline */}
+                <div
+                  className="group relative w-full h-1.5 bg-border rounded-full cursor-pointer mb-2"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = (e.clientX - rect.left) / rect.width;
+                    seek(Math.floor(pct * duration));
+                  }}
+                >
+                  <div
+                    className="absolute left-0 top-0 h-full bg-accent rounded-full transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition"
+                    style={{ left: `calc(${progress}% - 6px)` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(position)}</span>
+                  <button
+                    onClick={togglePlay}
+                    className="text-white hover:text-accent transition p-1"
+                  >
+                    {isPlaying ? (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  <span className="text-muted/50 text-[10px] tabular-nums">{formatDuration(duration)}</span>
+                </div>
+              </div>
+            )}
+
             {/* Spotify embed fallback for non-premium or non-host */}
             {nowPlaying.spotifyId && (!isHost || !user.premium) && (
               <iframe

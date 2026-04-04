@@ -4,7 +4,11 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
   const [isReady, setIsReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
   const scriptLoaded = useRef(false);
+  const intervalRef = useRef(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -40,6 +44,13 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
         setIsReady(false);
       });
 
+      p.addListener("player_state_changed", (state) => {
+        if (!state) return;
+        setIsPlaying(!state.paused);
+        setPosition(state.position);
+        setDuration(state.duration);
+      });
+
       p.connect();
       setPlayer(p);
     };
@@ -53,6 +64,22 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
       if (player) player.disconnect();
     };
   }, [enabled]);
+
+  // Poll position while playing
+  useEffect(() => {
+    if (isPlaying && player) {
+      intervalRef.current = setInterval(async () => {
+        const state = await player.getCurrentState();
+        if (state) {
+          setPosition(state.position);
+          setDuration(state.duration);
+        }
+      }, 500);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [isPlaying, player]);
 
   async function play(spotifyUri) {
     if (!deviceId) return;
@@ -77,5 +104,13 @@ export default function useSpotifyPlayer({ getToken, enabled }) {
     if (player) await player.resume();
   }
 
-  return { player, deviceId, isReady, play, pause, resume };
+  async function togglePlay() {
+    if (player) await player.togglePlay();
+  }
+
+  async function seek(ms) {
+    if (player) await player.seek(ms);
+  }
+
+  return { player, deviceId, isReady, isPlaying, position, duration, play, pause, resume, togglePlay, seek };
 }

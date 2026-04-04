@@ -1,6 +1,7 @@
 import { useState } from "react";
 import useSpotifyAuth from "./useSpotifyAuth";
 import socket from "./socket";
+import api from "./api";
 import Lobby from "./Lobby";
 
 export default function App() {
@@ -31,7 +32,7 @@ export default function App() {
   async function createLobby() {
     setError("");
     try {
-      const res = await fetch("/api/lobbies", { method: "POST" });
+      const res = await api("/api/lobbies", { method: "POST" });
       const { code } = await res.json();
       joinLobby(code, true);
     } catch {

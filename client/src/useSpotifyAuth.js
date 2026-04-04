@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import api from "./api";
 
 const TOKEN_KEY = "pt_spotify";
 
@@ -23,7 +24,7 @@ export default function useSpotifyAuth() {
       window.history.replaceState({}, "", "/");
       (async () => {
         try {
-          const res = await fetch("/api/auth/callback", {
+          const res = await api("/api/auth/callback", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code }),
@@ -58,7 +59,7 @@ export default function useSpotifyAuth() {
     }
 
     try {
-      const res = await fetch("/api/auth/refresh", {
+      const res = await api("/api/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: auth.refreshToken }),
@@ -84,7 +85,8 @@ export default function useSpotifyAuth() {
   }
 
   function login() {
-    window.location.href = "/api/auth/login";
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    window.location.href = `${apiUrl}/api/auth/login`;
   }
 
   return {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import socket from "./socket";
+import api from "./api";
 import useSpotifyPlayer from "./useSpotifyPlayer";
 
 export default function Lobby({ code, isHost, user, initialState, getToken, onLeave }) {
@@ -51,7 +52,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(search)}`);
+        const res = await api(`/api/spotify/search?q=${encodeURIComponent(search)}`);
         const data = await res.json();
         setResults(data.tracks || []);
       } catch {

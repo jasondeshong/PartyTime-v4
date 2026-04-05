@@ -30,10 +30,8 @@ export default function useAuth() {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
 
-  // Use native: to guarantee exact URI on both platforms
-  const redirectUri = AuthSession.makeRedirectUri({
-    native: "partytime://callback",
-  });
+  // Force exact redirect URI — makeRedirectUri is unreliable on Android
+  const redirectUri = "partytime://callback";
 
   console.log("[useAuth] redirectUri:", redirectUri, "platform:", Platform.OS);
   // TEMP DEBUG — remove before production

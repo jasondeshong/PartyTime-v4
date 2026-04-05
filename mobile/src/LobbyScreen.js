@@ -28,11 +28,13 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [progress, setProgress] = useState(0); // 0-1
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
+  const [saved, setSaved] = useState(false);
   const pollRef = useRef(null);
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const nowPlayingRef = useRef(nowPlaying);
+  const skipFiredRef = useRef(null); // track which songId we already skipped for
 
   function showToast(msg) {
     setToast(msg);
@@ -41,7 +43,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   }
 
   // Keep nowPlayingRef in sync
-  useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
+  useEffect(() => {
+    nowPlayingRef.current = nowPlaying;
+    setSaved(false); // reset saved state when song changes
+    skipFiredRef.current = null; // reset skip guard when song changes
+  }, [nowPlaying?.spotifyId]);
 
   // AppState: re-poll + reconnect socket when returning from background
   useEffect(() => {
@@ -67,9 +73,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 setProgress((data.progress_ms || 0) / data.item.duration_ms);
               }
               // Auto-advance if track ended while in background
-              if (!data.is_playing && data.progress_ms === 0 && data.item?.id !== nowPlayingRef.current.spotifyId) {
-                socket.emit("skip", code);
-              }
+              checkAutoAdvance(data);
             }
           } catch {}
         }
@@ -79,17 +83,39 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     return () => sub.remove();
   }, [code, isGuest]);
 
+  // Centralized auto-advance check
+  function checkAutoAdvance(data) {
+    const np = nowPlayingRef.current;
+    if (!np?.spotifyId) return;
+    // Already fired skip for this song
+    if (skipFiredRef.current === np.spotifyId) return;
+
+    const ended =
+      // Song finished: not playing and progress is near the end
+      (!data.is_playing && data.item?.duration_ms && data.progress_ms >= data.item.duration_ms - 3000) ||
+      // Spotify moved to a different track (user didn't skip in PartyTime)
+      (!data.is_playing && data.progress_ms === 0 && data.item?.id !== np.spotifyId) ||
+      // Track completed: Spotify reports no item at all
+      (!data.is_playing && !data.item);
+
+    if (ended) {
+      skipFiredRef.current = np.spotifyId;
+      socket.emit("skip", code);
+    }
+  }
+
   // Save to library
   async function saveToLibrary() {
-    if (!getToken || !nowPlaying?.spotifyId) return;
+    if (!getToken || !nowPlaying?.spotifyId || saved) return;
     try {
       const token = await getToken();
-      const res = await fetch(`https://api.spotify.com/v1/me/tracks`, {
+      const res = await fetch("https://api.spotify.com/v1/me/tracks", {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [nowPlaying.spotifyId] }),
       });
       if (res.ok || res.status === 200) {
+        setSaved(true);
         showToast(`"${nowPlaying.title}" saved to library`);
       } else {
         showToast("Couldn't save — try again");
@@ -120,10 +146,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           if (data.item?.duration_ms) {
             setProgress((data.progress_ms || 0) / data.item.duration_ms);
           }
-          // Auto-advance: if track ended (paused + near end)
-          if (!data.is_playing && data.progress_ms === 0 && data.item?.id !== nowPlaying.spotifyId) {
-            socket.emit("skip", code);
-          }
+          checkAutoAdvance(data);
         } else if (res.status === 204) {
           setIsPlaying(false);
         }
@@ -143,8 +166,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
       });
-      if (res.status === 404) {
-        // No active device — check for available devices first
+      if (res.status === 404 || res.status === 502) {
+        // No active device — check for available devices
         const devRes = await fetch("https://api.spotify.com/v1/me/player/devices", {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -157,7 +180,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
             body: JSON.stringify({ device_ids: [device.id], play: false }),
           });
-          await new Promise((r) => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 800));
           res = await fetch("https://api.spotify.com/v1/me/player/play", {
             method: "PUT",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -166,18 +189,17 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           if (res.ok || res.status === 204) {
             setIsPlaying(true);
           } else {
-            showToast("Open Spotify once, then come back — playback will work from here");
+            showToast("Open Spotify once, then come back");
           }
         } else {
-          // No devices at all — need user to open Spotify once
-          showToast("Open Spotify once, then come back — playback will work from here");
+          showToast("Open Spotify once, then come back");
         }
       } else if (res.status === 403) {
         showToast("Spotify Premium required for playback");
       } else if (res.ok || res.status === 204) {
         setIsPlaying(true);
       }
-    } catch { showToast("Open Spotify once, then come back — playback will work from here"); }
+    } catch { showToast("Open Spotify once, then come back"); }
   }
 
   async function handlePause() {
@@ -195,7 +217,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   // Auto-play when now playing changes
   useEffect(() => {
     if (isGuest || !nowPlaying?.spotifyId || !getToken) return;
-    handlePlay();
+    // Small delay to let Spotify settle after skip
+    const t = setTimeout(() => handlePlay(), 300);
+    return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId]);
 
   useEffect(() => {
@@ -208,8 +232,16 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.on("users-updated", (u) => setUsers(u));
     socket.on("now-playing", (np) => setNowPlaying(np));
     socket.on("add-error", (msg) => showToast(msg));
-    socket.on("add-duplicate", (title) => showToast(`"${title}" is already queued — counted as a vote`));
+    socket.on("add-duplicate", ({ title, songId }) => {
+      showToast(`"${title}" is already queued — counted as a vote`);
+      // Auto-highlight the upvote arrow
+      if (songId) setMyVotes((v) => ({ ...v, [songId]: "up" }));
+    });
     socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
+    socket.on("lobby-closed", () => {
+      showToast("Host left — lobby closed");
+      setTimeout(onLeave, 2000);
+    });
 
     return () => {
       socket.off("lobby-state");
@@ -219,6 +251,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       socket.off("add-error");
       socket.off("add-duplicate");
       socket.off("song-removed-by-votes");
+      socket.off("lobby-closed");
     };
   }, []);
 
@@ -434,8 +467,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   )}
                 </View>
                 {!isGuest && (
-                  <TouchableOpacity style={s.saveBtn} onPress={saveToLibrary} activeOpacity={0.7}>
-                    <Text style={s.saveBtnIcon}>+</Text>
+                  <TouchableOpacity style={[s.saveBtn, saved && s.saveBtnSaved]} onPress={saveToLibrary} activeOpacity={0.7}>
+                    <Text style={[s.saveBtnIcon, saved && s.saveBtnIconSaved]}>{saved ? "✓" : "+"}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -653,7 +686,9 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(42,42,42,0.5)", borderRadius: 14,
     width: 36, height: 36, alignItems: "center", justifyContent: "center",
   },
+  saveBtnSaved: { borderColor: "#c96442" },
   saveBtnIcon: { color: "rgba(136,136,136,0.6)", fontSize: 20, fontWeight: "300", marginTop: -1 },
+  saveBtnIconSaved: { color: "#c96442", fontSize: 16 },
   playerControls: { marginTop: 14 },
   progressRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
   progressRowGuest: { marginTop: 12 },

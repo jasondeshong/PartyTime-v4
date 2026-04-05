@@ -55,8 +55,10 @@ async function getSpotifyToken() {
 
 // In-memory state
 const lobbyUsers = new Map(); // code -> [{ id, name }]
+const lobbyHosts = new Map(); // code -> socketId of host
 const userVotes = new Map(); // "code:songId" -> Map(socketId -> "up"|"down")
-const playedSongs = new Map(); // code -> Set of spotifyIds (tracks already played)
+const playedSongs = new Map(); // code -> Map(spotifyId -> timestamp)
+const PLAYED_COOLDOWN_MS = 30 * 60 * 1000; // 30 minute cooldown
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -69,6 +71,7 @@ const SPOTIFY_SCOPES = [
   "user-modify-playback-state",
   "user-read-playback-state",
   "user-library-read",
+  "user-library-modify",
   "playlist-read-private",
   "playlist-read-collaborative",
 ].join(" ");
@@ -309,7 +312,7 @@ app.post("/api/lobbies", async (_req, res) => {
   }
 
   lobbyUsers.set(code, []);
-  playedSongs.set(code, new Set());
+  playedSongs.set(code, new Map());
   res.json({ code });
 });
 
@@ -348,12 +351,27 @@ async function getLobby(code) {
   };
 }
 
+// --- Helper: destroy a lobby ---
+async function destroyLobby(code) {
+  await supabase.from("queue").delete().eq("lobby_code", code);
+  await supabase.from("lobbies").delete().eq("code", code);
+  lobbyUsers.delete(code);
+  lobbyHosts.delete(code);
+  playedSongs.delete(code);
+  for (const key of userVotes.keys()) {
+    if (key.startsWith(code + ":")) userVotes.delete(key);
+  }
+  // Notify all clients in this lobby
+  io.to(code).emit("lobby-closed");
+}
+
 // --- Socket.io events ---
 io.on("connection", (socket) => {
   let currentLobby = null;
   let userName = null;
+  let isHost = false;
 
-  socket.on("join-lobby", async ({ code, name }) => {
+  socket.on("join-lobby", async ({ code, name, host }) => {
     const lobby = await getLobby(code);
     if (!lobby) {
       socket.emit("error", "Lobby not found");
@@ -369,7 +387,13 @@ io.on("connection", (socket) => {
       users.push({ id: socket.id, name });
     }
 
-    if (!playedSongs.has(code)) playedSongs.set(code, new Set());
+    if (!playedSongs.has(code)) playedSongs.set(code, new Map());
+
+    // Track host (first user to create/join as host)
+    if (host && !lobbyHosts.has(code)) {
+      lobbyHosts.set(code, socket.id);
+      isHost = true;
+    }
 
     lobby.users = users;
     socket.emit("lobby-state", lobby);
@@ -379,11 +403,19 @@ io.on("connection", (socket) => {
   socket.on("add-song", async ({ code, song }) => {
     if (!song.spotifyId) return;
 
-    // Check if already played in this lobby
+    // Check if on cooldown
     const played = playedSongs.get(code);
     if (played && played.has(song.spotifyId)) {
-      socket.emit("add-error", `"${song.title || "This song"}" was already played — available again next session`);
-      return;
+      const playedAt = played.get(song.spotifyId);
+      const remaining = PLAYED_COOLDOWN_MS - (Date.now() - playedAt);
+      if (remaining > 0) {
+        const mins = Math.ceil(remaining / 60000);
+        socket.emit("add-error", `"${song.title || "This song"}" was recently played — available again in ${mins} min`);
+        return;
+      } else {
+        // Cooldown expired, remove from played
+        played.delete(song.spotifyId);
+      }
     }
 
     // Check if already in queue — upvote instead
@@ -406,7 +438,7 @@ io.on("connection", (socket) => {
 
       const updated = await getLobby(code);
       if (updated) io.to(code).emit("queue-updated", updated.queue);
-      socket.emit("add-duplicate", existing.title);
+      socket.emit("add-duplicate", { title: existing.title, songId: existing.id });
       return;
     }
 
@@ -448,7 +480,7 @@ io.on("connection", (socket) => {
         .update({ now_playing: firstSong })
         .eq("code", code);
 
-      if (played) played.add(firstSong.spotifyId);
+      if (played) played.set(firstSong.spotifyId, Date.now());
 
       const updated = await getLobby(code);
       io.to(code).emit("now-playing", firstSong);
@@ -523,6 +555,17 @@ io.on("connection", (socket) => {
   socket.on("rejoin", async (code) => {
     if (!code) return;
     socket.join(code);
+    currentLobby = code;
+
+    // Re-add to users list if not present (reconnect after socket drop)
+    if (userName) {
+      const users = lobbyUsers.get(code);
+      if (users && !users.some((u) => u.id === socket.id)) {
+        users.push({ id: socket.id, name: userName });
+        io.to(code).emit("users-updated", users);
+      }
+    }
+
     const lobby = await getLobby(code);
     if (lobby) {
       socket.emit("lobby-state", lobby);
@@ -540,10 +583,10 @@ io.on("connection", (socket) => {
       userVotes.delete(`${code}:${nowPlaying.id}`);
     }
 
-    // Track played song
+    // Track played song with timestamp
     if (nowPlaying?.spotifyId) {
       const played = playedSongs.get(code);
-      if (played) played.add(nowPlaying.spotifyId);
+      if (played) played.set(nowPlaying.spotifyId, Date.now());
     }
 
     await supabase
@@ -564,6 +607,19 @@ io.on("connection", (socket) => {
         lobbyUsers.set(currentLobby, filtered);
         io.to(currentLobby).emit("users-updated", filtered);
       }
+
+      // If host disconnected, start a 2-minute grace period then destroy lobby
+      if (lobbyHosts.get(currentLobby) === socket.id) {
+        const code = currentLobby;
+        setTimeout(async () => {
+          // Check if host reconnected
+          const hostId = lobbyHosts.get(code);
+          if (!hostId || hostId === socket.id) {
+            console.log(`Host left lobby ${code} — destroying`);
+            await destroyLobby(code);
+          }
+        }, 2 * 60 * 1000); // 2 minute grace period
+      }
     }
   });
 });
@@ -582,6 +638,7 @@ async function cleanupLobbies() {
     await supabase.from("lobbies").delete().in("code", codes);
     codes.forEach((c) => {
       lobbyUsers.delete(c);
+      lobbyHosts.delete(c);
       playedSongs.delete(c);
       for (const key of userVotes.keys()) {
         if (key.startsWith(c + ":")) userVotes.delete(key);

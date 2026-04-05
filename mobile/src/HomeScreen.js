@@ -11,7 +11,7 @@ export default function HomeScreen({ user, onLogout, onJoinLobby }) {
 
   function joinLobby(code, host) {
     if (!socket.connected) socket.connect();
-    socket.emit("join-lobby", { code, name: user.name });
+    socket.emit("join-lobby", { code, name: user.name, host });
 
     socket.once("error", (msg) => {
       console.warn("Join error:", msg);

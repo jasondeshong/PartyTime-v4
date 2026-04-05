@@ -64,8 +64,15 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
     socket.on("now-playing", (np) => setNowPlaying(np));
     socket.on("vote-error", () => {});
     socket.on("add-error", (msg) => showToast(msg));
-    socket.on("add-duplicate", (title) => showToast(`"${title}" is already queued — counted as a vote`));
+    socket.on("add-duplicate", ({ title, songId }) => {
+      showToast(`"${title}" is already queued — counted as a vote`);
+      if (songId) setMyVotes((v) => ({ ...v, [songId]: "up" }));
+    });
     socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
+    socket.on("lobby-closed", () => {
+      showToast("Host left — lobby closed");
+      setTimeout(onLeave, 2000);
+    });
 
     return () => {
       socket.off("lobby-state");
@@ -76,6 +83,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       socket.off("add-error");
       socket.off("add-duplicate");
       socket.off("song-removed-by-votes");
+      socket.off("lobby-closed");
     };
   }, []);
 

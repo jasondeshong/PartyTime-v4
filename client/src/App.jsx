@@ -55,7 +55,7 @@ export default function App() {
   function joinLobby(code, host, name) {
     setError("");
     if (!socket.connected) socket.connect();
-    socket.emit("join-lobby", { code, name });
+    socket.emit("join-lobby", { code, name, host });
 
     socket.once("error", (msg) => {
       setError(msg);

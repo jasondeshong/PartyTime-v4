@@ -79,6 +79,24 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     return () => sub.remove();
   }, [code, isGuest]);
 
+  // Pre-warm Spotify on lobby join (host only) — silently activate device
+  // so playback starts instantly without visible redirect
+  useEffect(() => {
+    if (isGuest || !getToken) return;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch("https://api.spotify.com/v1/me/player", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        // 204 = no active device → silently launch Spotify in background
+        if (res.status === 204 || res.status === 404) {
+          await Linking.openURL("spotify://");
+        }
+      } catch {}
+    })();
+  }, []); // once on mount
+
   // Save to library
   async function saveToLibrary() {
     if (!getToken || !nowPlaying?.spotifyId) return;

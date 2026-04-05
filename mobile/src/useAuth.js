@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -30,10 +30,14 @@ export default function useAuth() {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: "partytime", path: "callback" });
-  console.log("[useAuth] redirectUri:", redirectUri);
+  // Use native: to guarantee exact URI on both platforms
+  const redirectUri = AuthSession.makeRedirectUri({
+    native: "partytime://callback",
+  });
+
+  console.log("[useAuth] redirectUri:", redirectUri, "platform:", Platform.OS);
   // TEMP DEBUG — remove before production
-  Alert.alert("Debug: redirectUri", redirectUri);
+  Alert.alert("Debug: redirectUri", `${Platform.OS}: ${redirectUri}`);
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {

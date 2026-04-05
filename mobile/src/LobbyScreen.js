@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, Linking, AppState,
 } from "react-native";
+import * as SpotifyRemote from "expo-spotify-app-remote";
 import socket from "./socket";
 import api from "./api";
 
@@ -25,16 +26,16 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const isGuest = !getToken;
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0); // 0-1
+  const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [saved, setSaved] = useState(false);
-  const pollRef = useRef(null);
+  const [remoteConnected, setRemoteConnected] = useState(false);
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const nowPlayingRef = useRef(nowPlaying);
-  const skipFiredRef = useRef(null); // track which songId we already skipped for
+  const skipFiredRef = useRef(null);
 
   function showToast(msg) {
     setToast(msg);
@@ -45,64 +46,89 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   // Keep nowPlayingRef in sync
   useEffect(() => {
     nowPlayingRef.current = nowPlaying;
-    setSaved(false); // reset saved state when song changes
-    skipFiredRef.current = null; // reset skip guard when song changes
+    setSaved(false);
+    skipFiredRef.current = null;
   }, [nowPlaying?.spotifyId]);
 
-  // AppState: re-poll + reconnect socket when returning from background
+  // --- Spotify App Remote connection + player state subscription ---
+  useEffect(() => {
+    if (isGuest || !getToken) return;
+
+    let playerSub;
+    let connSub;
+
+    async function connectRemote() {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        await SpotifyRemote.connect(token);
+        setRemoteConnected(true);
+
+        // Subscribe to real-time player state (no polling needed)
+        await SpotifyRemote.subscribeToPlayerState();
+        playerSub = SpotifyRemote.addPlayerStateListener((state) => {
+          setIsPlaying(!state.isPaused);
+          setDuration(state.durationMs || 0);
+          setPosition(state.positionMs || 0);
+          if (state.durationMs) {
+            setProgress(state.positionMs / state.durationMs);
+          }
+          // Auto-advance: song ended
+          if (state.isPaused && state.durationMs > 0 && state.positionMs >= state.durationMs - 1500) {
+            const np = nowPlayingRef.current;
+            if (np?.spotifyId && skipFiredRef.current !== np.spotifyId) {
+              skipFiredRef.current = np.spotifyId;
+              socket.emit("skip", code);
+            }
+          }
+        });
+
+        connSub = SpotifyRemote.addConnectionListener((event) => {
+          setRemoteConnected(event.connected);
+          if (!event.connected) {
+            // Try to reconnect
+            setTimeout(async () => {
+              try {
+                const t = await getToken();
+                if (t) await SpotifyRemote.connect(t);
+              } catch {}
+            }, 2000);
+          }
+        });
+      } catch {
+        setRemoteConnected(false);
+        showToast("Open Spotify once, then come back");
+      }
+    }
+
+    connectRemote();
+
+    return () => {
+      playerSub?.remove();
+      connSub?.remove();
+      SpotifyRemote.unsubscribeFromPlayerState().catch(() => {});
+      SpotifyRemote.disconnect().catch(() => {});
+    };
+  }, [isGuest]);
+
+  // AppState: reconnect when returning from background
   useEffect(() => {
     const sub = AppState.addEventListener("change", async (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
-        // Reconnect socket if needed
         if (!socket.connected) socket.connect();
-        // Re-join lobby to get fresh state
         socket.emit("rejoin", code);
-        // Immediate playback check for auto-advance
-        if (!isGuest && nowPlayingRef.current?.spotifyId && getToken) {
+        // Reconnect App Remote if needed
+        if (!isGuest && getToken && !remoteConnected) {
           try {
             const token = await getToken();
-            const res = await fetch("https://api.spotify.com/v1/me/player", {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.status === 200) {
-              const data = await res.json();
-              setIsPlaying(data.is_playing);
-              setDuration(data.item?.duration_ms || 0);
-              setPosition(data.progress_ms || 0);
-              if (data.item?.duration_ms) {
-                setProgress((data.progress_ms || 0) / data.item.duration_ms);
-              }
-              // Auto-advance if track ended while in background
-              checkAutoAdvance(data);
-            }
+            if (token) await SpotifyRemote.connect(token);
           } catch {}
         }
       }
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, [code, isGuest]);
-
-  // Centralized auto-advance check
-  function checkAutoAdvance(data) {
-    const np = nowPlayingRef.current;
-    if (!np?.spotifyId) return;
-    // Already fired skip for this song
-    if (skipFiredRef.current === np.spotifyId) return;
-
-    const ended =
-      // Song finished: not playing and progress is near the end
-      (!data.is_playing && data.item?.duration_ms && data.progress_ms >= data.item.duration_ms - 3000) ||
-      // Spotify moved to a different track (user didn't skip in PartyTime)
-      (!data.is_playing && data.progress_ms === 0 && data.item?.id !== np.spotifyId) ||
-      // Track completed: Spotify reports no item at all
-      (!data.is_playing && !data.item);
-
-    if (ended) {
-      skipFiredRef.current = np.spotifyId;
-      socket.emit("skip", code);
-    }
-  }
+  }, [code, isGuest, remoteConnected]);
 
   // Save to library
   async function saveToLibrary() {
@@ -125,99 +151,36 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     }
   }
 
-  // Poll Spotify playback state
-  useEffect(() => {
-    if (isGuest || !nowPlaying?.spotifyId) {
-      setIsPlaying(false);
-      setProgress(0);
-      return;
-    }
-    async function poll() {
-      try {
-        const token = await getToken();
-        const res = await fetch("https://api.spotify.com/v1/me/player", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.status === 200) {
-          const data = await res.json();
-          setIsPlaying(data.is_playing);
-          setDuration(data.item?.duration_ms || 0);
-          setPosition(data.progress_ms || 0);
-          if (data.item?.duration_ms) {
-            setProgress((data.progress_ms || 0) / data.item.duration_ms);
-          }
-          checkAutoAdvance(data);
-        } else if (res.status === 204) {
-          setIsPlaying(false);
-        }
-      } catch {}
-    }
-    poll();
-    pollRef.current = setInterval(poll, 1500);
-    return () => clearInterval(pollRef.current);
-  }, [nowPlaying?.spotifyId, isGuest]);
-
+  // Play via App Remote (no app switching)
   async function handlePlay() {
     if (!getToken || !nowPlaying?.spotifyId) return;
     try {
-      const token = await getToken();
-      let res = await fetch("https://api.spotify.com/v1/me/player/play", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
-      });
-      if (res.status === 404 || res.status === 502) {
-        // No active device — check for available devices
-        const devRes = await fetch("https://api.spotify.com/v1/me/player/devices", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const devData = await devRes.json();
-        const device = devData.devices?.find(d => d.type === "Smartphone") || devData.devices?.[0];
-        if (device) {
-          // Transfer playback to found device, then play
-          await fetch("https://api.spotify.com/v1/me/player", {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ device_ids: [device.id], play: false }),
-          });
-          await new Promise((r) => setTimeout(r, 800));
-          res = await fetch("https://api.spotify.com/v1/me/player/play", {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
-          });
-          if (res.ok || res.status === 204) {
-            setIsPlaying(true);
-          } else {
-            showToast("Open Spotify once, then come back");
-          }
-        } else {
-          showToast("Open Spotify once, then come back");
-        }
-      } else if (res.status === 403) {
-        showToast("Spotify Premium required for playback");
-      } else if (res.ok || res.status === 204) {
+      await SpotifyRemote.play(`spotify:track:${nowPlaying.spotifyId}`);
+      setIsPlaying(true);
+    } catch {
+      // Fallback: try reconnecting first
+      try {
+        const token = await getToken();
+        await SpotifyRemote.connect(token);
+        await SpotifyRemote.play(`spotify:track:${nowPlaying.spotifyId}`);
         setIsPlaying(true);
+        setRemoteConnected(true);
+      } catch {
+        showToast("Open Spotify once, then come back");
       }
-    } catch { showToast("Open Spotify once, then come back"); }
+    }
   }
 
   async function handlePause() {
-    if (!getToken) return;
     try {
-      const token = await getToken();
-      const res = await fetch("https://api.spotify.com/v1/me/player/pause", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok || res.status === 204) setIsPlaying(false);
+      await SpotifyRemote.pause();
+      setIsPlaying(false);
     } catch {}
   }
 
   // Auto-play when now playing changes
   useEffect(() => {
     if (isGuest || !nowPlaying?.spotifyId || !getToken) return;
-    // Small delay to let Spotify settle after skip
     const t = setTimeout(() => handlePlay(), 300);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId]);
@@ -234,7 +197,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.on("add-error", (msg) => showToast(msg));
     socket.on("add-duplicate", ({ title, songId }) => {
       showToast(`"${title}" is already queued — counted as a vote`);
-      // Auto-highlight the upvote arrow
       if (songId) setMyVotes((v) => ({ ...v, [songId]: "up" }));
     });
     socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
@@ -476,7 +438,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               {/* Player controls */}
               {nowPlaying.spotifyId && !isGuest && (
                 <View style={s.playerControls}>
-                  {/* Progress bar */}
                   <View style={s.progressRow}>
                     <Text style={s.progressTime}>{fmt(position)}</Text>
                     <View style={s.progressTrack}>
@@ -484,7 +445,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     </View>
                     <Text style={s.progressTime}>{fmt(duration)}</Text>
                   </View>
-                  {/* Buttons */}
                   <View style={s.controlsRow}>
                     <TouchableOpacity
                       style={s.playBtn}
@@ -503,7 +463,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   </View>
                 </View>
               )}
-              {/* Guest sees progress bar too (read-only) */}
               {nowPlaying.spotifyId && isGuest && progress > 0 && (
                 <View style={s.progressRowGuest}>
                   <View style={s.progressTrack}>
@@ -545,7 +504,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           ))}
         </View>
 
-        {/* Search Tab */}
         {tab === "search" && (
           <View>
             <TextInput
@@ -564,7 +522,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </View>
         )}
 
-        {/* Liked Tab (host only) */}
         {tab === "liked" && !isGuest && (
           <View>
             {loadingLibrary ? (
@@ -579,7 +536,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </View>
         )}
 
-        {/* Playlists Tab (host only) */}
         {tab === "playlists" && !isGuest && (
           <View>
             {loadingLibrary ? (
@@ -621,7 +577,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </View>
         )}
 
-        {/* Queue */}
         <View style={s.queueHeader}>
           <Text style={s.queueLabel}>UP NEXT</Text>
           {queue.length > 0 && (
@@ -646,16 +601,12 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0a0a" },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingTop: 60 },
-
-  // Toast
   toast: {
     position: "absolute", top: 50, left: 20, right: 20, zIndex: 100,
     backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
     borderRadius: 20, padding: 14, alignItems: "center",
   },
   toastText: { color: "#fff", fontSize: 13, fontWeight: "300", letterSpacing: 0.3 },
-
-  // Header
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerTitle: { color: "#fff", fontSize: 18, fontWeight: "800", fontFamily: "monospace", letterSpacing: 1 },
@@ -664,13 +615,9 @@ const s = StyleSheet.create({
   codeText: { color: "rgba(136,136,136,0.6)", fontSize: 11, fontFamily: "monospace", letterSpacing: 4, marginTop: 4 },
   codeTap: { color: "rgba(136,136,136,0.3)" },
   leaveText: { color: "rgba(136,136,136,0.5)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1.5 },
-
-  // Users
   usersRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 20 },
   userChip: { backgroundColor: "#161616", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   userChipText: { color: "rgba(136,136,136,0.7)", fontSize: 10, fontFamily: "monospace", letterSpacing: 0.5 },
-
-  // Now Playing
   nowPlaying: {
     backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
     borderRadius: 20, padding: 16, marginBottom: 20,
@@ -711,8 +658,6 @@ const s = StyleSheet.create({
   npEmptyText: { color: "rgba(136,136,136,0.3)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, marginBottom: 8 },
   playNextBtn: { backgroundColor: "#c96442", paddingHorizontal: 32, paddingVertical: 12, borderRadius: 14 },
   playNextText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-
-  // Tabs
   tabs: {
     flexDirection: "row", backgroundColor: "#161616", borderRadius: 20,
     padding: 4, marginBottom: 12, gap: 4,
@@ -721,16 +666,12 @@ const s = StyleSheet.create({
   tabActive: { backgroundColor: "#222" },
   tabText: { color: "rgba(136,136,136,0.5)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1 },
   tabTextActive: { color: "#fff" },
-
-  // Search
   searchInput: {
     backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
     borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
     color: "#fff", fontSize: 15, marginBottom: 8,
   },
   searchingText: { color: "rgba(136,136,136,0.4)", fontSize: 12, fontFamily: "monospace", textAlign: "center", paddingVertical: 8 },
-
-  // Song rows
   songRow: {
     flexDirection: "row", alignItems: "center", gap: 12,
     paddingVertical: 10, paddingHorizontal: 4,
@@ -741,8 +682,6 @@ const s = StyleSheet.create({
   songTitle: { color: "#fff", fontSize: 14 },
   songArtist: { color: "rgba(136,136,136,0.5)", fontSize: 12 },
   songDuration: { color: "rgba(136,136,136,0.25)", fontSize: 10, fontFamily: "monospace" },
-
-  // Queue
   queueHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 12 },
   queueLabel: { color: "rgba(136,136,136,0.5)", fontSize: 9, fontFamily: "monospace", letterSpacing: 2 },
   queueCount: { color: "rgba(136,136,136,0.3)", fontSize: 10, fontFamily: "monospace" },
@@ -761,8 +700,6 @@ const s = StyleSheet.create({
   voteCount: { color: "rgba(255,255,255,0.8)", fontSize: 11, fontFamily: "monospace", width: 20, textAlign: "center" },
   removeBtn: { padding: 6 },
   removeText: { color: "rgba(136,136,136,0.2)", fontSize: 12 },
-
-  // Shared
   loadingText: { color: "rgba(136,136,136,0.4)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, textAlign: "center", paddingVertical: 40 },
   emptyText: { color: "rgba(136,136,136,0.2)", fontSize: 11, fontFamily: "monospace", letterSpacing: 1, textAlign: "center", paddingVertical: 40 },
   backBtn: { paddingVertical: 8, marginBottom: 4 },

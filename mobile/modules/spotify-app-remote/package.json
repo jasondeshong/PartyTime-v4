@@ -1,0 +1,8 @@
+{
+  "name": "expo-spotify-app-remote",
+  "version": "1.0.0",
+  "main": "index.js",
+  "peerDependencies": {
+    "expo": ">=52.0.0"
+  }
+}

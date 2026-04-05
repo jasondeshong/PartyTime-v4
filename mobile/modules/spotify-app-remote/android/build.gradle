@@ -1,0 +1,33 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+android {
+  namespace "expo.modules.spotifyappremote"
+
+  compileSdkVersion safeExtGet("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdkVersion safeExtGet("minSdkVersion", 23)
+    targetSdkVersion safeExtGet("targetSdkVersion", 35)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation 'com.spotify.android:app-remote:0.8.0'
+  implementation 'com.google.code.gson:gson:2.10.1'
+}
+
+int safeExtGet(String prop, Integer fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}

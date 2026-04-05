@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert, KeyboardAvoidingView, Platform,
+  View, Text, TextInput, TouchableOpacity, Image, StyleSheet, KeyboardAvoidingView, Platform,
 } from "react-native";
 import api from "./api";
 import socket from "./socket";
@@ -14,7 +14,8 @@ export default function HomeScreen({ user, onLogout, onJoinLobby }) {
     socket.emit("join-lobby", { code, name: user.name });
 
     socket.once("error", (msg) => {
-      Alert.alert("Error", msg);
+      console.warn("Join error:", msg);
+      setLoading(false);
       socket.disconnect();
     });
 
@@ -30,7 +31,7 @@ export default function HomeScreen({ user, onLogout, onJoinLobby }) {
       const { code } = await res.json();
       joinLobby(code, true);
     } catch {
-      Alert.alert("Error", "Failed to create lobby");
+      console.warn("Failed to create lobby");
     }
     setLoading(false);
   }

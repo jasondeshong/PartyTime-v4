@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
-  StyleSheet, Alert, Clipboard, Dimensions, Linking, AppState,
+  StyleSheet, Clipboard, Dimensions, Linking, AppState,
 } from "react-native";
 import socket from "./socket";
 import api from "./api";

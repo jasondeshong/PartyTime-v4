@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StatusBar, Alert } from "react-native";
+import { StatusBar } from "react-native";
 import useAuth from "./src/useAuth";
 import LoginScreen from "./src/LoginScreen";
 import HomeScreen from "./src/HomeScreen";
@@ -28,7 +28,7 @@ export default function App() {
     socket.emit("join-lobby", { code, name });
 
     socket.once("error", (msg) => {
-      Alert.alert("Error", msg);
+      console.warn("Join error:", msg);
       socket.disconnect();
       setGuestUser(null);
     });

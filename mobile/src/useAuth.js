@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Alert, Platform } from "react-native";
+import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -9,10 +9,7 @@ import api from "./api";
 WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = "pt_spotify";
-const discovery = {
-  authorizationEndpoint: "https://accounts.spotify.com/authorize",
-  tokenEndpoint: "https://accounts.spotify.com/api/token",
-};
+const REDIRECT_URI = "partytime://callback";
 
 const SCOPES = [
   "streaming",
@@ -30,12 +27,13 @@ export default function useAuth() {
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
 
-  // Force exact redirect URI — makeRedirectUri is unreliable on Android
-  const redirectUri = "partytime://callback";
+  const redirectUri = REDIRECT_URI;
 
-  console.log("[useAuth] redirectUri:", redirectUri, "platform:", Platform.OS);
-  // TEMP DEBUG — remove before production
-  Alert.alert("Debug: redirectUri", `${Platform.OS}: ${redirectUri}`);
+  // iOS: use useAuthRequest (works reliably)
+  const discovery = {
+    authorizationEndpoint: "https://accounts.spotify.com/authorize",
+    tokenEndpoint: "https://accounts.spotify.com/api/token",
+  };
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
@@ -61,37 +59,36 @@ export default function useAuth() {
     })();
   }, []);
 
-  // Handle auth response
+  // Handle auth response (iOS path via useAuthRequest)
   useEffect(() => {
-    console.log("[useAuth] response:", JSON.stringify(response));
+    if (Platform.OS === "android") return; // Android handles in login()
     if (response?.type === "success" && response.params.code) {
-      (async () => {
-        try {
-          const res = await api("/api/auth/callback", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              code: response.params.code,
-              redirectUri,
-            }),
-          });
-          const data = await res.json();
-          if (data.accessToken) {
-            const session = {
-              accessToken: data.accessToken,
-              refreshToken: data.refreshToken,
-              expiresAt: Date.now() + data.expiresIn * 1000,
-              user: data.user,
-            };
-            await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(session));
-            setAuth(session);
-          }
-        } catch (err) {
-          console.error("Auth error:", err);
-        }
-      })();
+      exchangeCode(response.params.code);
     }
   }, [response]);
+
+  async function exchangeCode(code) {
+    try {
+      const res = await api("/api/auth/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, redirectUri }),
+      });
+      const data = await res.json();
+      if (data.accessToken) {
+        const session = {
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          expiresAt: Date.now() + data.expiresIn * 1000,
+          user: data.user,
+        };
+        await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(session));
+        setAuth(session);
+      }
+    } catch (err) {
+      console.error("Auth error:", err);
+    }
+  }
 
   const getToken = useCallback(async () => {
     if (!auth) return null;
@@ -122,7 +119,31 @@ export default function useAuth() {
   }, [auth]);
 
   async function login() {
-    await promptAsync();
+    if (Platform.OS === "android") {
+      // Android: bypass useAuthRequest, build URL manually
+      const state = Math.random().toString(36).substring(2, 15);
+      const params = new URLSearchParams({
+        client_id: SPOTIFY_CLIENT_ID,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: SCOPES.join(" "),
+        state,
+      });
+      const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
+
+      if (result.type === "success" && result.url) {
+        const url = new URL(result.url);
+        const code = url.searchParams.get("code");
+        if (code) {
+          await exchangeCode(code);
+        }
+      }
+    } else {
+      // iOS: use standard expo-auth-session flow
+      await promptAsync();
+    }
   }
 
   async function logout() {

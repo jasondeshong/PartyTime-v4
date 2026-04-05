@@ -79,24 +79,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     return () => sub.remove();
   }, [code, isGuest]);
 
-  // Pre-warm Spotify on lobby join (host only) — silently activate device
-  // so playback starts instantly without visible redirect
-  useEffect(() => {
-    if (isGuest || !getToken) return;
-    (async () => {
-      try {
-        const token = await getToken();
-        const res = await fetch("https://api.spotify.com/v1/me/player", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        // 204 = no active device → silently launch Spotify in background
-        if (res.status === 204 || res.status === 404) {
-          await Linking.openURL("spotify://");
-        }
-      } catch {}
-    })();
-  }, []); // once on mount
-
   // Save to library
   async function saveToLibrary() {
     if (!getToken || !nowPlaying?.spotifyId) return;
@@ -162,26 +144,40 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
       });
       if (res.status === 404) {
-        // No active device — launch Spotify silently, wait, retry
-        await Linking.openURL("spotify://");
-        // Wait for Spotify to activate as a device
-        await new Promise((r) => setTimeout(r, 2500));
-        res = await fetch("https://api.spotify.com/v1/me/player/play", {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+        // No active device — check for available devices first
+        const devRes = await fetch("https://api.spotify.com/v1/me/player/devices", {
+          headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok && res.status !== 204) {
-          showToast("Connecting to Spotify — tap play again");
+        const devData = await devRes.json();
+        const device = devData.devices?.find(d => d.type === "Smartphone") || devData.devices?.[0];
+        if (device) {
+          // Transfer playback to found device, then play
+          await fetch("https://api.spotify.com/v1/me/player", {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ device_ids: [device.id], play: false }),
+          });
+          await new Promise((r) => setTimeout(r, 500));
+          res = await fetch("https://api.spotify.com/v1/me/player/play", {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
+          });
+          if (res.ok || res.status === 204) {
+            setIsPlaying(true);
+          } else {
+            showToast("Open Spotify once, then come back — playback will work from here");
+          }
         } else {
-          setIsPlaying(true);
+          // No devices at all — need user to open Spotify once
+          showToast("Open Spotify once, then come back — playback will work from here");
         }
       } else if (res.status === 403) {
         showToast("Spotify Premium required for playback");
       } else if (res.ok || res.status === 204) {
         setIsPlaying(true);
       }
-    } catch { showToast("Connecting to Spotify — tap play again"); }
+    } catch { showToast("Open Spotify once, then come back — playback will work from here"); }
   }
 
   async function handlePause() {
@@ -199,17 +195,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   // Auto-play when now playing changes
   useEffect(() => {
     if (isGuest || !nowPlaying?.spotifyId || !getToken) return;
-    (async () => {
-      try {
-        const token = await getToken();
-        const res = await fetch("https://api.spotify.com/v1/me/player/play", {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ uris: [`spotify:track:${nowPlaying.spotifyId}`] }),
-        });
-        if (res.ok || res.status === 204) setIsPlaying(true);
-      } catch {}
-    })();
+    handlePlay();
   }, [nowPlaying?.spotifyId]);
 
   useEffect(() => {
@@ -408,9 +394,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             <View style={s.titleRow}>
               <Text style={s.headerTitle}>PARTYTIME</Text>
               {isHost ? (
-                <Text style={s.hostLabel}>"HOST"</Text>
+                <Text style={s.hostLabel}>HOST</Text>
               ) : isGuest ? (
-                <Text style={s.guestLabel}>"GUEST"</Text>
+                <Text style={s.guestLabel}>GUEST</Text>
               ) : null}
             </View>
             <TouchableOpacity onPress={copyCode}>
@@ -440,7 +426,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   <Image source={{ uri: nowPlaying.albumArt }} style={s.npArt} />
                 )}
                 <View style={s.npInfo}>
-                  <Text style={s.npLabel}>"NOW PLAYING"</Text>
+                  <Text style={s.npLabel}>NOW PLAYING</Text>
                   <Text style={s.npTitle} numberOfLines={1}>{nowPlaying.title}</Text>
                   <Text style={s.npArtist} numberOfLines={1}>{nowPlaying.artist}</Text>
                   {nowPlaying.addedBy && (
@@ -497,7 +483,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             <View style={s.npEmpty}>
               {queue.length > 0 && isHost ? (
                 <>
-                  <Text style={s.npEmptyLabel}>"QUEUE READY"</Text>
+                  <Text style={s.npEmptyLabel}>QUEUE READY</Text>
                   <TouchableOpacity style={s.playNextBtn} onPress={skip} activeOpacity={0.8}>
                     <Text style={s.playNextText}>Play Next</Text>
                   </TouchableOpacity>
@@ -604,7 +590,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
         {/* Queue */}
         <View style={s.queueHeader}>
-          <Text style={s.queueLabel}>"UP NEXT"</Text>
+          <Text style={s.queueLabel}>UP NEXT</Text>
           {queue.length > 0 && (
             <Text style={s.queueCount}>{queue.length} track{queue.length !== 1 ? "s" : ""}</Text>
           )}
@@ -704,8 +690,8 @@ const s = StyleSheet.create({
   // Search
   searchInput: {
     backgroundColor: "#161616", borderWidth: 1, borderColor: "rgba(42,42,42,0.5)",
-    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 14,
-    color: "#fff", fontSize: 14, marginBottom: 8,
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12,
+    color: "#fff", fontSize: 15, marginBottom: 8,
   },
   searchingText: { color: "rgba(136,136,136,0.4)", fontSize: 12, fontFamily: "monospace", textAlign: "center", paddingVertical: 8 },
 

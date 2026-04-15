@@ -18,6 +18,8 @@ A collaborative jukebox app. One person hosts (Spotify Premium), everyone else j
 
 Jay DeShong, founder. Non-technical — directs product and design, AI builds. Talk in product language, not code. No function names or line numbers in messages to him.
 
+**Communication rule:** Never give Jay an out when there's a clear best option. When you know the right answer, recommend it directly and move on. Don't hedge with "but if you want to do X instead, that's legitimate." He'll ask if he wants alternatives. Save the options-laid-out-flat treatment for genuine toss-ups.
+
 ---
 
 ## CRITICAL RULES FOR AI SESSIONS

@@ -55,7 +55,19 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     "RLS lockdown will prevent writes once policies are applied."
   );
 }
-const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
+const supabase = createClient(process.env.SUPABASE_URL, supabaseKey, {
+  global: {
+    fetch: async (url, options = {}) => {
+      const h = options.headers || {};
+      const authHdr = h.Authorization || h.authorization || "(none)";
+      const apikeyHdr = h.apikey || "(none)";
+      const authTail = authHdr === "(none)" ? authHdr : authHdr.slice(-12);
+      const apikeyTail = apikeyHdr === "(none)" ? apikeyHdr : apikeyHdr.slice(-12);
+      console.log(`[DIAG3] ${options.method || "GET"} ${url} auth=...${authTail} apikey=...${apikeyTail}`);
+      return fetch(url, options);
+    },
+  },
+});
 
 try {
   const payload = JSON.parse(
@@ -72,29 +84,17 @@ try {
 (async () => {
   const testCode = "DIAG" + Math.floor(Math.random() * 10000);
   try {
-    const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/lobbies`, {
-      method: "POST",
-      headers: {
-        apikey: supabaseKey,
-        Authorization: `Bearer ${supabaseKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ code: testCode, now_playing: null }),
-    });
-    const text = await res.text();
-    console.log(`[DIAG2] raw insert status=${res.status} body=${text.slice(0, 400)}`);
-    if (res.ok) {
-      await fetch(`${process.env.SUPABASE_URL}/rest/v1/lobbies?code=eq.${testCode}`, {
-        method: "DELETE",
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-      });
+    const { data, error } = await supabase
+      .from("lobbies")
+      .insert({ code: testCode, now_playing: null });
+    console.log(
+      `[DIAG4] supabase-js insert error=${JSON.stringify(error)} data=${JSON.stringify(data)}`
+    );
+    if (!error) {
+      await supabase.from("lobbies").delete().eq("code", testCode);
     }
   } catch (err) {
-    console.log("[DIAG2] raw insert threw:", err.message);
+    console.log("[DIAG4] supabase-js insert threw:", err.message);
   }
 })();
 

@@ -69,6 +69,35 @@ try {
   console.log("[DIAG] Could not decode Supabase key:", e.message);
 }
 
+(async () => {
+  const testCode = "DIAG" + Math.floor(Math.random() * 10000);
+  try {
+    const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/lobbies`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ code: testCode, now_playing: null }),
+    });
+    const text = await res.text();
+    console.log(`[DIAG2] raw insert status=${res.status} body=${text.slice(0, 400)}`);
+    if (res.ok) {
+      await fetch(`${process.env.SUPABASE_URL}/rest/v1/lobbies?code=eq.${testCode}`, {
+        method: "DELETE",
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+      });
+    }
+  } catch (err) {
+    console.log("[DIAG2] raw insert threw:", err.message);
+  }
+})();
+
 // Spotify token management
 let spotifyToken = null;
 let spotifyTokenExpiry = 0;

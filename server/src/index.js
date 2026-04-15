@@ -57,6 +57,18 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
 }
 const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 
+try {
+  const payload = JSON.parse(
+    Buffer.from(supabaseKey.split(".")[1], "base64").toString()
+  );
+  const urlHost = new URL(process.env.SUPABASE_URL).host;
+  console.log(
+    `[DIAG] Supabase key role="${payload.role}" ref="${payload.ref}" url_host="${urlHost}"`
+  );
+} catch (e) {
+  console.log("[DIAG] Could not decode Supabase key:", e.message);
+}
+
 // Spotify token management
 let spotifyToken = null;
 let spotifyTokenExpiry = 0;

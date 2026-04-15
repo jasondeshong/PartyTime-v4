@@ -20,6 +20,22 @@ Jay DeShong, founder. Non-technical — directs product and design, AI builds. T
 
 ---
 
+## CRITICAL RULES FOR AI SESSIONS
+
+**1. Always start on `main`.** First action of every new session:
+```
+git fetch origin
+git checkout main
+git pull
+```
+Do NOT create a new branch unless Jay explicitly asks for one. Work directly on main by default. The repo has suffered from branch sprawl — every past AI session spun up its own branch and never merged, leading to diverged work and lost features. Prevent this.
+
+**2. If you must branch, merge back immediately.** Don't leave a feature branch sitting unmerged. If the work takes multiple sessions, rebase on main between each session so you don't drift.
+
+**3. Check `git log main..origin/main --oneline` before starting any task.** Make sure you're not about to build on top of a stale baseline.
+
+---
+
 ## Tech Stack
 
 | Layer | Tech | Folder |

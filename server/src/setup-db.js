@@ -46,12 +46,58 @@ RETURNS VOID AS $$
   UPDATE queue SET votes = votes + delta WHERE id = song_id;
 $$ LANGUAGE SQL;
 
--- Enable RLS but allow all operations for anon (MVP)
+-- Venues table (B2B — permanent lobbies tied to a slug)
+CREATE TABLE venues (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  owner_email TEXT NOT NULL,
+  lobby_code TEXT REFERENCES lobbies(code) ON DELETE SET NULL,
+  settings JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_venues_slug ON venues(slug);
+
+-- Analytics events table
+CREATE TABLE analytics_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id UUID REFERENCES venues(id) ON DELETE CASCADE,
+  lobby_code TEXT,
+  event_type TEXT NOT NULL,
+  payload JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_analytics_venue ON analytics_events(venue_id);
+CREATE INDEX idx_analytics_type ON analytics_events(event_type);
+CREATE INDEX idx_analytics_created ON analytics_events(created_at);
+
+-- Enable RLS — server uses service_role key to bypass these policies.
+-- Anon clients get read-only on lobbies/queue for realtime; everything else denied.
 ALTER TABLE lobbies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE venues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow all on lobbies" ON lobbies FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all on queue" ON queue FOR ALL USING (true) WITH CHECK (true);
+-- Anon can read lobby state (needed if clients ever subscribe to realtime)
+CREATE POLICY "Anon read lobbies" ON lobbies FOR SELECT TO anon USING (true);
+CREATE POLICY "Anon read queue" ON queue FOR SELECT TO anon USING (true);
+
+-- Venues and analytics: no anon access at all (server-only)
+-- No policies created for anon = denied by default once RLS is on
+
+-- --------------------------------------------------------------
+-- LOCKDOWN MIGRATION (run this ONCE in Supabase SQL Editor to
+-- replace the old wide-open policies from the MVP):
+--
+-- DROP POLICY IF EXISTS "Allow all on lobbies" ON lobbies;
+-- DROP POLICY IF EXISTS "Allow all on queue" ON queue;
+-- DROP POLICY IF EXISTS "Allow all on venues" ON venues;
+-- DROP POLICY IF EXISTS "Allow all on analytics_events" ON analytics_events;
+-- CREATE POLICY "Anon read lobbies" ON lobbies FOR SELECT TO anon USING (true);
+-- CREATE POLICY "Anon read queue" ON queue FOR SELECT TO anon USING (true);
+-- --------------------------------------------------------------
   `);
 } else if (error) {
   console.error("Connection error:", error);

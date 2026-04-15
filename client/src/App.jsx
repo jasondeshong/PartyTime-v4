@@ -3,6 +3,7 @@ import useSpotifyAuth from "./useSpotifyAuth";
 import socket from "./socket";
 import api from "./api";
 import Lobby from "./Lobby";
+import VenueDashboard from "./VenueDashboard";
 
 const LOBBY_KEY = "pt_lobby";
 const GUEST_KEY = "pt_guest";
@@ -25,6 +26,29 @@ export default function App() {
   const [user, setUser] = useState(null); // { name, image?, premium?, isGuest }
   const [error, setError] = useState("");
   const [mode, setMode] = useState(null); // null | "host" | "guest"
+  const [venue, setVenue] = useState(null); // { name, slug, lobbyCode } if URL is /:slug
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  // Detect venue slug in URL (e.g. /mollys-pub or /mollys-pub/analytics) and resolve it
+  useEffect(() => {
+    const path = window.location.pathname.slice(1);
+    const [slug, section] = path.split("/");
+    if (slug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      setVenueLoading(true);
+      api(`/api/venues/${slug}`)
+        .then((res) => res.ok ? res.json() : Promise.reject(res.status))
+        .then((data) => {
+          setVenue(data);
+          setLobbyCode(data.lobbyCode);
+          if (section === "analytics") setShowDashboard(true);
+        })
+        .catch((status) => {
+          if (status === 404) setError(`No venue at /${slug}`);
+        })
+        .finally(() => setVenueLoading(false));
+    }
+  }, []);
 
   // Restore session on load
   useEffect(() => {
@@ -174,6 +198,58 @@ export default function App() {
               Join
             </button>
           </div>
+
+          {error && <p className="text-red-400/80 text-[11px] font-mono text-center mt-2 tracking-wide">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // Venue analytics dashboard — URL is partytime.app/mollys-pub/analytics
+  if (venue && showDashboard) {
+    return (
+      <VenueDashboard
+        venueId={venue.id}
+        venueName={venue.name}
+        onBack={() => {
+          window.history.pushState({}, "", `/${venue.slug}`);
+          setShowDashboard(false);
+        }}
+      />
+    );
+  }
+
+  // Venue landing — URL is partytime.app/mollys-pub
+  if (venueLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-bg">
+        <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (venue) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-6">
+        <p className="text-muted/40 text-[10px] font-mono tracking-wider mb-2 uppercase">Welcome to</p>
+        <h1 className="text-3xl font-bold text-white mb-1 tracking-tight font-mono">{venue.name}</h1>
+        <p className="text-muted/40 text-[11px] font-mono tracking-wider mb-14">"POWERED BY PARTYTIME"</p>
+
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <input
+            type="text"
+            placeholder="Your name"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleJoinAsGuest()}
+            className="bg-surface border border-border/50 rounded-2xl px-4 py-3.5 text-white placeholder-muted/30 focus:outline-none focus:border-accent/30 text-center text-sm"
+          />
+          <button
+            onClick={handleJoinAsGuest}
+            className="bg-accent hover:bg-accent-hover text-white font-semibold py-3.5 rounded-2xl transition text-sm"
+          >
+            Join {venue.name}
+          </button>
 
           {error && <p className="text-red-400/80 text-[11px] font-mono text-center mt-2 tracking-wide">{error}</p>}
         </div>

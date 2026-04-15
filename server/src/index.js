@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
@@ -20,11 +21,46 @@ const io = new Server(httpServer, {
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
-// Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// Rate limits — per IP
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many search requests — slow down" },
+});
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many auth requests — slow down" },
+});
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests — slow down" },
+});
+app.use("/api/", generalLimiter);
+
+// Supabase client — prefer service role key (bypasses RLS) so server can write.
+// Falls back to anon key for local dev; warn if service key is missing in production.
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "⚠️  SUPABASE_SERVICE_ROLE_KEY not set — server is using anon key. " +
+    "RLS lockdown will prevent writes once policies are applied."
+  );
+}
+// Pass Node's native fetch explicitly — @supabase/supabase-js@2.101.1's
+// default fetch path drops the Authorization header in Node, causing
+// service_role requests to hit RLS as if they were anon.
+const supabase = createClient(process.env.SUPABASE_URL, supabaseKey, {
+  global: { fetch: (...args) => fetch(...args) },
+});
 
 // Spotify token management
 let spotifyToken = null;
@@ -32,6 +68,11 @@ let spotifyTokenExpiry = 0;
 
 async function getSpotifyToken() {
   if (spotifyToken && Date.now() < spotifyTokenExpiry) return spotifyToken;
+
+  if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+    console.error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET env vars");
+    throw new Error("Spotify credentials not configured");
+  }
 
   const res = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
@@ -48,6 +89,12 @@ async function getSpotifyToken() {
     body: "grant_type=client_credentials",
   });
   const data = await res.json();
+
+  if (data.error) {
+    console.error("Spotify client credentials error:", data.error, data.error_description);
+    throw new Error(`Spotify auth failed: ${data.error_description || data.error}`);
+  }
+
   spotifyToken = data.access_token;
   spotifyTokenExpiry = Date.now() + data.expires_in * 1000 - 60000;
   return spotifyToken;
@@ -55,10 +102,41 @@ async function getSpotifyToken() {
 
 // In-memory state
 const lobbyUsers = new Map(); // code -> [{ id, name }]
-const lobbyHosts = new Map(); // code -> socketId of host
+const lobbyHosts = new Map(); // code -> host userName (persists across disconnects)
 const userVotes = new Map(); // "code:songId" -> Map(socketId -> "up"|"down")
 const playedSongs = new Map(); // code -> Map(spotifyId -> timestamp)
-const PLAYED_COOLDOWN_MS = 30 * 60 * 1000; // 30 minute cooldown
+const PLAYED_COOLDOWN_MS = 30 * 60 * 1000; // 30 minute cooldown before a song can be re-added
+
+// --- Analytics event tracking ---
+async function trackEvent(venueId, lobbyCode, eventType, payload = {}) {
+  try {
+    const { error } = await supabase.from("analytics_events").insert({
+      venue_id: venueId || null,
+      lobby_code: lobbyCode,
+      event_type: eventType,
+      payload,
+    });
+    if (error) {
+      console.error(`Analytics trackEvent failed [${eventType}]:`, error.message);
+    }
+  } catch (err) {
+    console.error(`Analytics trackEvent exception [${eventType}]:`, err.message);
+  }
+}
+
+// Resolve venue_id from lobby_code (cached per-session in memory)
+const lobbyVenueMap = new Map(); // code -> venueId | null
+async function getVenueIdForLobby(code) {
+  if (lobbyVenueMap.has(code)) return lobbyVenueMap.get(code);
+  const { data } = await supabase
+    .from("venues")
+    .select("id")
+    .eq("lobby_code", code)
+    .single();
+  const venueId = data?.id || null;
+  lobbyVenueMap.set(code, venueId);
+  return venueId;
+}
 
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -83,7 +161,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Spotify OAuth: redirect to Spotify login
-app.get("/api/auth/login", (_req, res) => {
+app.get("/api/auth/login", authLimiter, (_req, res) => {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.SPOTIFY_CLIENT_ID,
@@ -94,12 +172,17 @@ app.get("/api/auth/login", (_req, res) => {
 });
 
 // Spotify OAuth: exchange code for tokens
-app.post("/api/auth/callback", async (req, res) => {
+app.post("/api/auth/callback", authLimiter, async (req, res) => {
   const { code, redirectUri } = req.body;
   if (!code) return res.status(400).json({ error: "Missing code" });
 
   // Use provided redirectUri (mobile) or fall back to env (web)
   const callbackUri = redirectUri || process.env.SPOTIFY_REDIRECT_URI;
+
+  if (!callbackUri) {
+    console.error("Auth callback: no redirect URI provided and SPOTIFY_REDIRECT_URI not set");
+    return res.status(400).json({ error: "No redirect URI configured" });
+  }
 
   try {
     const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
@@ -123,13 +206,23 @@ app.post("/api/auth/callback", async (req, res) => {
     const tokens = await tokenRes.json();
 
     if (tokens.error) {
-      return res.status(400).json({ error: tokens.error_description });
+      console.error("Spotify token exchange error:", tokens.error, tokens.error_description);
+      const status = tokens.error === "invalid_grant" ? 401 : 400;
+      return res.status(status).json({
+        error: tokens.error_description || tokens.error,
+        code: tokens.error,
+      });
     }
 
     const profileRes = await fetch("https://api.spotify.com/v1/me", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     const profile = await profileRes.json();
+
+    if (profile.error) {
+      console.error("Spotify profile fetch error:", profile.error);
+      return res.status(502).json({ error: "Failed to fetch Spotify profile" });
+    }
 
     res.json({
       accessToken: tokens.access_token,
@@ -149,7 +242,7 @@ app.post("/api/auth/callback", async (req, res) => {
 });
 
 // Spotify OAuth: refresh token
-app.post("/api/auth/refresh", async (req, res) => {
+app.post("/api/auth/refresh", authLimiter, async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: "Missing refresh token" });
 
@@ -172,6 +265,16 @@ app.post("/api/auth/refresh", async (req, res) => {
       }),
     });
     const tokens = await tokenRes.json();
+
+    if (tokens.error) {
+      console.error("Spotify refresh error:", tokens.error, tokens.error_description);
+      const status = tokens.error === "invalid_grant" ? 401 : 400;
+      return res.status(status).json({
+        error: tokens.error_description || tokens.error,
+        code: tokens.error,
+      });
+    }
+
     res.json({
       accessToken: tokens.access_token,
       expiresIn: tokens.expires_in,
@@ -183,7 +286,7 @@ app.post("/api/auth/refresh", async (req, res) => {
 });
 
 // Spotify search
-app.get("/api/spotify/search", async (req, res) => {
+app.get("/api/spotify/search", searchLimiter, async (req, res) => {
   const { q } = req.query;
   if (!q) return res.json({ tracks: [] });
 
@@ -316,6 +419,365 @@ app.post("/api/lobbies", async (_req, res) => {
   res.json({ code });
 });
 
+// --- Venue CRUD (B2B) ---
+
+// Create venue with permanent lobby
+app.post("/api/venues", async (req, res) => {
+  const { name, slug, ownerEmail, settings } = req.body;
+  if (!name || !slug || !ownerEmail) {
+    return res.status(400).json({ error: "Missing name, slug, or ownerEmail" });
+  }
+
+  // Validate slug format: lowercase alphanumeric + hyphens
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return res.status(400).json({ error: "Slug must be lowercase letters, numbers, and hyphens" });
+  }
+
+  // Check slug uniqueness
+  const { data: existing } = await supabase
+    .from("venues")
+    .select("id")
+    .eq("slug", slug)
+    .single();
+  if (existing) {
+    return res.status(409).json({ error: "Slug already taken" });
+  }
+
+  // Create a permanent lobby for this venue
+  const code = generateCode();
+  const { error: lobbyError } = await supabase
+    .from("lobbies")
+    .insert({ code, now_playing: null });
+  if (lobbyError) {
+    console.error("Venue lobby creation error:", lobbyError);
+    return res.status(500).json({ error: "Failed to create venue lobby" });
+  }
+  lobbyUsers.set(code, []);
+  playedSongs.set(code, new Map());
+
+  const { data: venue, error } = await supabase
+    .from("venues")
+    .insert({
+      name,
+      slug,
+      owner_email: ownerEmail,
+      lobby_code: code,
+      settings: settings || {},
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Venue creation error:", error);
+    return res.status(500).json({ error: "Failed to create venue" });
+  }
+
+  // Cache the mapping
+  lobbyVenueMap.set(code, venue.id);
+
+  res.json({
+    id: venue.id,
+    name: venue.name,
+    slug: venue.slug,
+    lobbyCode: venue.lobby_code,
+    settings: venue.settings,
+    createdAt: venue.created_at,
+  });
+});
+
+// Resolve venue by slug
+app.get("/api/venues/:slug", async (req, res) => {
+  const { data: venue, error } = await supabase
+    .from("venues")
+    .select("*")
+    .eq("slug", req.params.slug)
+    .single();
+
+  if (error || !venue) {
+    return res.status(404).json({ error: "Venue not found" });
+  }
+
+  res.json({
+    id: venue.id,
+    name: venue.name,
+    slug: venue.slug,
+    lobbyCode: venue.lobby_code,
+    settings: venue.settings,
+    createdAt: venue.created_at,
+  });
+});
+
+// Update venue settings
+app.put("/api/venues/:id", async (req, res) => {
+  const { name, settings } = req.body;
+  const updates = {};
+  if (name) updates.name = name;
+  if (settings) updates.settings = settings;
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: "Nothing to update" });
+  }
+
+  const { data: venue, error } = await supabase
+    .from("venues")
+    .update(updates)
+    .eq("id", req.params.id)
+    .select()
+    .single();
+
+  if (error || !venue) {
+    return res.status(404).json({ error: "Venue not found or update failed" });
+  }
+
+  res.json({
+    id: venue.id,
+    name: venue.name,
+    slug: venue.slug,
+    lobbyCode: venue.lobby_code,
+    settings: venue.settings,
+  });
+});
+
+// Delete venue
+app.delete("/api/venues/:id", async (req, res) => {
+  // Get venue to find its lobby code
+  const { data: venue } = await supabase
+    .from("venues")
+    .select("lobby_code")
+    .eq("id", req.params.id)
+    .single();
+
+  const { error } = await supabase
+    .from("venues")
+    .delete()
+    .eq("id", req.params.id);
+
+  if (error) {
+    return res.status(500).json({ error: "Failed to delete venue" });
+  }
+
+  // Clean up the venue's lobby code from cache
+  if (venue?.lobby_code) {
+    lobbyVenueMap.delete(venue.lobby_code);
+  }
+
+  res.json({ success: true });
+});
+
+// --- Analytics query endpoints (B2B) ---
+
+// Overview: combined stats
+app.get("/api/venues/:id/analytics/overview", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", since);
+
+    if (error) throw error;
+
+    const songsPlayed = events.filter((e) => e.event_type === "song_played").length;
+    const songsAdded = events.filter((e) => e.event_type === "song_added").length;
+    const userJoins = events.filter((e) => e.event_type === "user_joined").length;
+    const votes = events.filter((e) => e.event_type === "vote_cast").length;
+    const skips = events.filter((e) => e.event_type === "song_skipped").length;
+    const uniqueUsers = new Set(
+      events
+        .filter((e) => e.event_type === "user_joined" && e.payload?.userName)
+        .map((e) => e.payload.userName)
+    ).size;
+
+    res.json({
+      since,
+      songsPlayed,
+      songsAdded,
+      totalJoins: userJoins,
+      uniqueUsers,
+      totalVotes: votes,
+      totalSkips: skips,
+    });
+  } catch (err) {
+    console.error("Analytics overview error:", err);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+// Peak hours: activity by hour of day
+app.get("/api/venues/:id/analytics/peak-hours", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", since);
+
+    if (error) throw error;
+
+    const hours = new Array(24).fill(0);
+    for (const e of events) {
+      const hour = new Date(e.created_at).getUTCHours();
+      hours[hour]++;
+    }
+
+    res.json({
+      since,
+      hours: hours.map((count, hour) => ({ hour, count })),
+    });
+  } catch (err) {
+    console.error("Analytics peak-hours error:", err);
+    res.status(500).json({ error: "Failed to fetch peak hours" });
+  }
+});
+
+// Participation: user join/leave patterns
+app.get("/api/venues/:id/analytics/participation", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .in("event_type", ["user_joined", "user_left"])
+      .gte("created_at", since);
+
+    if (error) throw error;
+
+    // Group by day
+    const daily = {};
+    for (const e of events) {
+      const day = e.created_at.split("T")[0];
+      if (!daily[day]) daily[day] = { joins: 0, leaves: 0, uniqueUsers: new Set() };
+      if (e.event_type === "user_joined") {
+        daily[day].joins++;
+        if (e.payload?.userName) daily[day].uniqueUsers.add(e.payload.userName);
+      } else {
+        daily[day].leaves++;
+      }
+    }
+
+    const days = Object.entries(daily)
+      .map(([date, d]) => ({ date, joins: d.joins, leaves: d.leaves, uniqueUsers: d.uniqueUsers.size }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({ since, days });
+  } catch (err) {
+    console.error("Analytics participation error:", err);
+    res.status(500).json({ error: "Failed to fetch participation" });
+  }
+});
+
+// Genre trends: genre breakdown from played songs
+app.get("/api/venues/:id/analytics/genre-trends", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("payload")
+      .eq("venue_id", venueId)
+      .eq("event_type", "song_played")
+      .gte("created_at", since);
+
+    if (error) throw error;
+
+    const genres = {};
+    for (const e of events) {
+      const genre = e.payload?.genre || "unknown";
+      genres[genre] = (genres[genre] || 0) + 1;
+    }
+
+    const sorted = Object.entries(genres)
+      .map(([genre, count]) => ({ genre, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({ since, genres: sorted });
+  } catch (err) {
+    console.error("Analytics genre-trends error:", err);
+    res.status(500).json({ error: "Failed to fetch genre trends" });
+  }
+});
+
+// Songs played count
+app.get("/api/venues/:id/analytics/songs-played", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("payload, created_at")
+      .eq("venue_id", venueId)
+      .eq("event_type", "song_played")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const songs = events.map((e) => ({
+      title: e.payload?.title || "Unknown",
+      artist: e.payload?.artist || "Unknown",
+      spotifyId: e.payload?.spotifyId || null,
+      playedAt: e.created_at,
+    }));
+
+    res.json({ since, total: songs.length, songs });
+  } catch (err) {
+    console.error("Analytics songs-played error:", err);
+    res.status(500).json({ error: "Failed to fetch songs played" });
+  }
+});
+
+// Top songs: most queued/played songs
+app.get("/api/venues/:id/analytics/top-songs", async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events, error } = await supabase
+      .from("analytics_events")
+      .select("payload")
+      .eq("venue_id", venueId)
+      .in("event_type", ["song_played", "song_added"])
+      .gte("created_at", since);
+
+    if (error) throw error;
+
+    const songCounts = {};
+    for (const e of events) {
+      const key = e.payload?.spotifyId;
+      if (!key) continue;
+      if (!songCounts[key]) {
+        songCounts[key] = {
+          spotifyId: key,
+          title: e.payload.title || "Unknown",
+          artist: e.payload.artist || "Unknown",
+          count: 0,
+        };
+      }
+      songCounts[key].count++;
+    }
+
+    const sorted = Object.values(songCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+
+    res.json({ since, songs: sorted });
+  } catch (err) {
+    console.error("Analytics top-songs error:", err);
+    res.status(500).json({ error: "Failed to fetch top songs" });
+  }
+});
+
 // --- Helper: load lobby from Supabase ---
 async function getLobby(code) {
   const { data, error } = await supabase
@@ -351,27 +813,12 @@ async function getLobby(code) {
   };
 }
 
-// --- Helper: destroy a lobby ---
-async function destroyLobby(code) {
-  await supabase.from("queue").delete().eq("lobby_code", code);
-  await supabase.from("lobbies").delete().eq("code", code);
-  lobbyUsers.delete(code);
-  lobbyHosts.delete(code);
-  playedSongs.delete(code);
-  for (const key of userVotes.keys()) {
-    if (key.startsWith(code + ":")) userVotes.delete(key);
-  }
-  // Notify all clients in this lobby
-  io.to(code).emit("lobby-closed");
-}
-
 // --- Socket.io events ---
 io.on("connection", (socket) => {
   let currentLobby = null;
   let userName = null;
-  let isHost = false;
 
-  socket.on("join-lobby", async ({ code, name, host }) => {
+  socket.on("join-lobby", async ({ code, name }) => {
     const lobby = await getLobby(code);
     if (!lobby) {
       socket.emit("error", "Lobby not found");
@@ -389,21 +836,28 @@ io.on("connection", (socket) => {
 
     if (!playedSongs.has(code)) playedSongs.set(code, new Map());
 
-    // Track host (first user to create/join as host)
-    if (host && !lobbyHosts.has(code)) {
-      lobbyHosts.set(code, socket.id);
-      isHost = true;
+    // First user to join claims host. Host is tracked by userName and persists
+    // across disconnects — reconnecting with the same name reclaims host.
+    if (!lobbyHosts.has(code)) {
+      lobbyHosts.set(code, name);
     }
+    const hostName = lobbyHosts.get(code);
+    const usersWithHost = users.map((u) => ({ ...u, isHost: u.name === hostName }));
 
-    lobby.users = users;
+    lobby.users = usersWithHost;
+    lobby.hostName = hostName;
     socket.emit("lobby-state", lobby);
-    io.to(code).emit("users-updated", users);
+    io.to(code).emit("users-updated", usersWithHost);
+
+    // Analytics: user joined
+    const venueId = await getVenueIdForLobby(code);
+    trackEvent(venueId, code, "user_joined", { userName: name, userCount: users.length });
   });
 
   socket.on("add-song", async ({ code, song }) => {
     if (!song.spotifyId) return;
 
-    // Check if on cooldown
+    // Check if on cooldown (30 minutes since last play)
     const played = playedSongs.get(code);
     if (played && played.has(song.spotifyId)) {
       const playedAt = played.get(song.spotifyId);
@@ -413,7 +867,6 @@ io.on("connection", (socket) => {
         socket.emit("add-error", `"${song.title || "This song"}" was recently played — available again in ${mins} min`);
         return;
       } else {
-        // Cooldown expired, remove from played
         played.delete(song.spotifyId);
       }
     }
@@ -468,6 +921,15 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Analytics: song added
+    const venueId = await getVenueIdForLobby(code);
+    trackEvent(venueId, code, "song_added", {
+      spotifyId: song.spotifyId,
+      title: song.title,
+      artist: song.artist,
+      addedBy: userName,
+    });
+
     const refreshed = await getLobby(code);
     if (!refreshed) return;
 
@@ -481,6 +943,13 @@ io.on("connection", (socket) => {
         .eq("code", code);
 
       if (played) played.set(firstSong.spotifyId, Date.now());
+
+      // Analytics: song started playing
+      trackEvent(venueId, code, "song_played", {
+        spotifyId: firstSong.spotifyId,
+        title: firstSong.title,
+        artist: firstSong.artist,
+      });
 
       const updated = await getLobby(code);
       io.to(code).emit("now-playing", firstSong);
@@ -521,6 +990,10 @@ io.on("connection", (socket) => {
 
     songVotes.set(socket.id, direction);
 
+    // Analytics: vote cast
+    const venueId = await getVenueIdForLobby(code);
+    trackEvent(venueId, code, "vote_cast", { songId, direction });
+
     // Check for auto-remove: if downvotes >= 80% of lobby users, remove song
     const users = lobbyUsers.get(code) || [];
     const threshold = Math.ceil(users.length * 0.8);
@@ -545,36 +1018,36 @@ io.on("connection", (socket) => {
   });
 
   socket.on("remove-song", async ({ code, songId }) => {
+    // Host-only: verify this socket's userName matches the lobby's host
+    if (lobbyHosts.get(code) !== userName) {
+      socket.emit("permission-error", "Only the host can remove songs");
+      return;
+    }
     await supabase.from("queue").delete().eq("id", songId);
     userVotes.delete(`${code}:${songId}`);
     const lobby = await getLobby(code);
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
   });
 
-  // Rejoin: re-send full lobby state (for app returning from background)
-  socket.on("rejoin", async (code) => {
-    if (!code) return;
-    socket.join(code);
-    currentLobby = code;
-
-    // Re-add to users list if not present (reconnect after socket drop)
-    if (userName) {
-      const users = lobbyUsers.get(code);
-      if (users && !users.some((u) => u.id === socket.id)) {
-        users.push({ id: socket.id, name: userName });
-        io.to(code).emit("users-updated", users);
-      }
-    }
-
-    const lobby = await getLobby(code);
-    if (lobby) {
-      socket.emit("lobby-state", lobby);
-    }
-  });
-
   socket.on("skip", async (code) => {
+    // Host-only: verify this socket's userName matches the lobby's host
+    if (lobbyHosts.get(code) !== userName) {
+      socket.emit("permission-error", "Only the host can skip songs");
+      return;
+    }
+
     const lobby = await getLobby(code);
     if (!lobby) return;
+
+    // Analytics: song skipped (the currently playing song)
+    const venueId = await getVenueIdForLobby(code);
+    if (lobby.nowPlaying) {
+      trackEvent(venueId, code, "song_skipped", {
+        spotifyId: lobby.nowPlaying.spotifyId,
+        title: lobby.nowPlaying.title,
+        artist: lobby.nowPlaying.artist,
+      });
+    }
 
     let nowPlaying = null;
     if (lobby.queue.length > 0) {
@@ -583,10 +1056,17 @@ io.on("connection", (socket) => {
       userVotes.delete(`${code}:${nowPlaying.id}`);
     }
 
-    // Track played song with timestamp
+    // Track played song
     if (nowPlaying?.spotifyId) {
       const played = playedSongs.get(code);
       if (played) played.set(nowPlaying.spotifyId, Date.now());
+
+      // Analytics: next song started playing
+      trackEvent(venueId, code, "song_played", {
+        spotifyId: nowPlaying.spotifyId,
+        title: nowPlaying.title,
+        artist: nowPlaying.artist,
+      });
     }
 
     await supabase
@@ -599,41 +1079,70 @@ io.on("connection", (socket) => {
     io.to(code).emit("queue-updated", updated?.queue || []);
   });
 
-  socket.on("disconnect", () => {
+  // Rejoin: re-send full lobby state (for app returning from background / socket reconnect)
+  socket.on("rejoin", async (code) => {
+    if (!code) return;
+    socket.join(code);
+    currentLobby = code;
+
+    if (userName) {
+      const users = lobbyUsers.get(code);
+      if (users && !users.some((u) => u.id === socket.id)) {
+        users.push({ id: socket.id, name: userName });
+        const hostName = lobbyHosts.get(code);
+        const usersWithHost = users.map((u) => ({ ...u, isHost: u.name === hostName }));
+        io.to(code).emit("users-updated", usersWithHost);
+      }
+    }
+
+    const lobby = await getLobby(code);
+    if (lobby) socket.emit("lobby-state", lobby);
+  });
+
+  socket.on("disconnect", async () => {
     if (currentLobby) {
       const users = lobbyUsers.get(currentLobby);
+      let filtered = [];
       if (users) {
-        const filtered = users.filter((u) => u.id !== socket.id);
+        filtered = users.filter((u) => u.id !== socket.id);
         lobbyUsers.set(currentLobby, filtered);
-        io.to(currentLobby).emit("users-updated", filtered);
       }
 
-      // If host disconnected, start a 2-minute grace period then destroy lobby
-      if (lobbyHosts.get(currentLobby) === socket.id) {
-        const code = currentLobby;
-        setTimeout(async () => {
-          // Check if host reconnected
-          const hostId = lobbyHosts.get(code);
-          if (!hostId || hostId === socket.id) {
-            console.log(`Host left lobby ${code} — destroying`);
-            await destroyLobby(code);
-          }
-        }, 2 * 60 * 1000); // 2 minute grace period
-      }
+      // Host role persists — not auto-transferred. Reconnecting with the same
+      // name reclaims host. If host never comes back, lobby has no active host
+      // until cleanup or explicit handoff.
+      const hostName = lobbyHosts.get(currentLobby);
+      const usersWithHost = filtered.map((u) => ({ ...u, isHost: u.name === hostName }));
+      io.to(currentLobby).emit("users-updated", usersWithHost);
+
+      // Analytics: user left
+      const venueId = await getVenueIdForLobby(currentLobby);
+      trackEvent(venueId, currentLobby, "user_left", {
+        userName,
+        userCount: filtered.length,
+      });
     }
   });
 });
 
-// --- Lobby cleanup: delete lobbies older than 24 hours ---
+// --- Lobby cleanup: delete ephemeral lobbies older than 24 hours (skip venue lobbies) ---
 async function cleanupLobbies() {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  // Get venue lobby codes to exclude from cleanup
+  const { data: venues } = await supabase.from("venues").select("lobby_code");
+  const venueCodes = new Set((venues || []).map((v) => v.lobby_code).filter(Boolean));
+
   const { data: old } = await supabase
     .from("lobbies")
     .select("code")
     .lt("created_at", cutoff);
 
   if (old && old.length > 0) {
-    const codes = old.map((l) => l.code);
+    // Filter out venue lobbies — those are permanent
+    const codes = old.map((l) => l.code).filter((c) => !venueCodes.has(c));
+    if (codes.length === 0) return;
+
     await supabase.from("queue").delete().in("lobby_code", codes);
     await supabase.from("lobbies").delete().in("code", codes);
     codes.forEach((c) => {

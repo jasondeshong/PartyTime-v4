@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
@@ -20,11 +21,41 @@ const io = new Server(httpServer, {
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
-// Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// Rate limits — per IP
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many search requests — slow down" },
+});
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many auth requests — slow down" },
+});
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests — slow down" },
+});
+app.use("/api/", generalLimiter);
+
+// Supabase client — prefer service role key (bypasses RLS) so server can write.
+// Falls back to anon key for local dev; warn if service key is missing in production.
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "⚠️  SUPABASE_SERVICE_ROLE_KEY not set — server is using anon key. " +
+    "RLS lockdown will prevent writes once policies are applied."
+  );
+}
+const supabase = createClient(process.env.SUPABASE_URL, supabaseKey);
 
 // Spotify token management
 let spotifyToken = null;
@@ -66,6 +97,7 @@ async function getSpotifyToken() {
 
 // In-memory state
 const lobbyUsers = new Map(); // code -> [{ id, name }]
+const lobbyHosts = new Map(); // code -> host userName (persists across disconnects)
 const userVotes = new Map(); // "code:songId" -> Map(socketId -> "up"|"down")
 const playedSongs = new Map(); // code -> Set of spotifyIds (tracks already played)
 
@@ -122,7 +154,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Spotify OAuth: redirect to Spotify login
-app.get("/api/auth/login", (_req, res) => {
+app.get("/api/auth/login", authLimiter, (_req, res) => {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.SPOTIFY_CLIENT_ID,
@@ -133,7 +165,7 @@ app.get("/api/auth/login", (_req, res) => {
 });
 
 // Spotify OAuth: exchange code for tokens
-app.post("/api/auth/callback", async (req, res) => {
+app.post("/api/auth/callback", authLimiter, async (req, res) => {
   const { code, redirectUri } = req.body;
   if (!code) return res.status(400).json({ error: "Missing code" });
 
@@ -203,7 +235,7 @@ app.post("/api/auth/callback", async (req, res) => {
 });
 
 // Spotify OAuth: refresh token
-app.post("/api/auth/refresh", async (req, res) => {
+app.post("/api/auth/refresh", authLimiter, async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: "Missing refresh token" });
 
@@ -247,7 +279,7 @@ app.post("/api/auth/refresh", async (req, res) => {
 });
 
 // Spotify search
-app.get("/api/spotify/search", async (req, res) => {
+app.get("/api/spotify/search", searchLimiter, async (req, res) => {
   const { q } = req.query;
   if (!q) return res.json({ tracks: [] });
 
@@ -797,9 +829,18 @@ io.on("connection", (socket) => {
 
     if (!playedSongs.has(code)) playedSongs.set(code, new Set());
 
-    lobby.users = users;
+    // First user to join claims host. Host is tracked by userName and persists
+    // across disconnects — reconnecting with the same name reclaims host.
+    if (!lobbyHosts.has(code)) {
+      lobbyHosts.set(code, name);
+    }
+    const hostName = lobbyHosts.get(code);
+    const usersWithHost = users.map((u) => ({ ...u, isHost: u.name === hostName }));
+
+    lobby.users = usersWithHost;
+    lobby.hostName = hostName;
     socket.emit("lobby-state", lobby);
-    io.to(code).emit("users-updated", users);
+    io.to(code).emit("users-updated", usersWithHost);
 
     // Analytics: user joined
     const venueId = await getVenueIdForLobby(code);
@@ -963,6 +1004,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("remove-song", async ({ code, songId }) => {
+    // Host-only: verify this socket's userName matches the lobby's host
+    if (lobbyHosts.get(code) !== userName) {
+      socket.emit("permission-error", "Only the host can remove songs");
+      return;
+    }
     await supabase.from("queue").delete().eq("id", songId);
     userVotes.delete(`${code}:${songId}`);
     const lobby = await getLobby(code);
@@ -970,6 +1016,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("skip", async (code) => {
+    // Host-only: verify this socket's userName matches the lobby's host
+    if (lobbyHosts.get(code) !== userName) {
+      socket.emit("permission-error", "Only the host can skip songs");
+      return;
+    }
+
     const lobby = await getLobby(code);
     if (!lobby) return;
 
@@ -1016,17 +1068,24 @@ io.on("connection", (socket) => {
   socket.on("disconnect", async () => {
     if (currentLobby) {
       const users = lobbyUsers.get(currentLobby);
+      let filtered = [];
       if (users) {
-        const filtered = users.filter((u) => u.id !== socket.id);
+        filtered = users.filter((u) => u.id !== socket.id);
         lobbyUsers.set(currentLobby, filtered);
-        io.to(currentLobby).emit("users-updated", filtered);
       }
+
+      // Host role persists — not auto-transferred. Reconnecting with the same
+      // name reclaims host. If host never comes back, lobby has no active host
+      // until cleanup or explicit handoff.
+      const hostName = lobbyHosts.get(currentLobby);
+      const usersWithHost = filtered.map((u) => ({ ...u, isHost: u.name === hostName }));
+      io.to(currentLobby).emit("users-updated", usersWithHost);
 
       // Analytics: user left
       const venueId = await getVenueIdForLobby(currentLobby);
       trackEvent(venueId, currentLobby, "user_left", {
         userName,
-        userCount: (users?.length || 1) - 1,
+        userCount: filtered.length,
       });
     }
   });
@@ -1054,6 +1113,7 @@ async function cleanupLobbies() {
     await supabase.from("lobbies").delete().in("code", codes);
     codes.forEach((c) => {
       lobbyUsers.delete(c);
+      lobbyHosts.delete(c);
       playedSongs.delete(c);
       for (const key of userVotes.keys()) {
         if (key.startsWith(c + ":")) userVotes.delete(key);

@@ -23,6 +23,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [playlistTracks, setPlaylistTracks] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [connectionState, setConnectionState] = useState("connected");
   const isGuest = !getToken;
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
@@ -45,6 +46,18 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.on("add-error", (msg) => showToast(msg));
     socket.on("add-duplicate", (title) => showToast(`"${title}" is already queued — counted as a vote`));
     socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
+    socket.on("permission-error", (msg) => showToast(msg));
+
+    // --- Connection state & auto-rejoin ---
+    const handleDisconnect = () => setConnectionState("reconnecting");
+    const handleReconnect = () => {
+      setConnectionState("connected");
+      // Re-join the lobby with the same user name so host status is reclaimed
+      socket.emit("join-lobby", { code, name: user?.name });
+    };
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect", handleReconnect);
+    socket.io.on("reconnect_attempt", () => setConnectionState("reconnecting"));
 
     return () => {
       socket.off("lobby-state");
@@ -54,8 +67,12 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       socket.off("add-error");
       socket.off("add-duplicate");
       socket.off("song-removed-by-votes");
+      socket.off("permission-error");
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect", handleReconnect);
+      socket.io.off("reconnect_attempt");
     };
-  }, []);
+  }, [code, user?.name]);
 
   useEffect(() => {
     if (tab !== "search" || !search.trim()) {
@@ -219,6 +236,13 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       {toast && (
         <View style={s.toast}>
           <Text style={s.toastText}>{toast}</Text>
+        </View>
+      )}
+
+      {/* Reconnecting banner */}
+      {connectionState === "reconnecting" && (
+        <View style={s.reconnectBanner}>
+          <Text style={s.reconnectText}>Reconnecting...</Text>
         </View>
       )}
 
@@ -454,6 +478,18 @@ const s = StyleSheet.create({
     borderRadius: 20, padding: 14, alignItems: "center",
   },
   toastText: { color: "#fff", fontSize: 13, fontWeight: "300", letterSpacing: 0.3 },
+
+  // Reconnect banner
+  reconnectBanner: {
+    position: "absolute", top: 0, left: 0, right: 0, zIndex: 99,
+    backgroundColor: "rgba(212, 136, 74, 0.15)",
+    borderBottomWidth: 1, borderBottomColor: "rgba(212, 136, 74, 0.4)",
+    paddingVertical: 8, alignItems: "center",
+  },
+  reconnectText: {
+    color: "#D4884A", fontSize: 12, fontWeight: "400", letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
 
   // Header
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },

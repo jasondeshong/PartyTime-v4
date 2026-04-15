@@ -55,48 +55,12 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     "RLS lockdown will prevent writes once policies are applied."
   );
 }
+// Pass Node's native fetch explicitly — @supabase/supabase-js@2.101.1's
+// default fetch path drops the Authorization header in Node, causing
+// service_role requests to hit RLS as if they were anon.
 const supabase = createClient(process.env.SUPABASE_URL, supabaseKey, {
-  global: {
-    fetch: async (url, options = {}) => {
-      const h = options.headers || {};
-      const authHdr = h.Authorization || h.authorization || "(none)";
-      const apikeyHdr = h.apikey || "(none)";
-      const authTail = authHdr === "(none)" ? authHdr : authHdr.slice(-12);
-      const apikeyTail = apikeyHdr === "(none)" ? apikeyHdr : apikeyHdr.slice(-12);
-      console.log(`[DIAG3] ${options.method || "GET"} ${url} auth=...${authTail} apikey=...${apikeyTail}`);
-      return fetch(url, options);
-    },
-  },
+  global: { fetch: (...args) => fetch(...args) },
 });
-
-try {
-  const payload = JSON.parse(
-    Buffer.from(supabaseKey.split(".")[1], "base64").toString()
-  );
-  const urlHost = new URL(process.env.SUPABASE_URL).host;
-  console.log(
-    `[DIAG] Supabase key role="${payload.role}" ref="${payload.ref}" url_host="${urlHost}"`
-  );
-} catch (e) {
-  console.log("[DIAG] Could not decode Supabase key:", e.message);
-}
-
-(async () => {
-  const testCode = "DIAG" + Math.floor(Math.random() * 10000);
-  try {
-    const { data, error } = await supabase
-      .from("lobbies")
-      .insert({ code: testCode, now_playing: null });
-    console.log(
-      `[DIAG4] supabase-js insert error=${JSON.stringify(error)} data=${JSON.stringify(data)}`
-    );
-    if (!error) {
-      await supabase.from("lobbies").delete().eq("code", testCode);
-    }
-  } catch (err) {
-    console.log("[DIAG4] supabase-js insert threw:", err.message);
-  }
-})();
 
 // Spotify token management
 let spotifyToken = null;

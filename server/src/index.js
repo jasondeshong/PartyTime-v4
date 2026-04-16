@@ -144,6 +144,7 @@ function generateCode() {
 
 const SPOTIFY_SCOPES = [
   "streaming",
+  "app-remote-control",
   "user-read-email",
   "user-read-private",
   "user-modify-playback-state",

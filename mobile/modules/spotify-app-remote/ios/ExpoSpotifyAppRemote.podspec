@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
   s.source         = { git: '' }
   s.static_framework = true
-  s.source_files   = '**/*.{h,m,swift}'
+  s.source_files   = '*.{h,m,swift}'
   s.dependency 'ExpoModulesCore'
-  s.dependency 'SpotifyiOS', '~> 2.1'
+  s.vendored_frameworks = 'SpotifyiOS.xcframework'
 end

@@ -10,6 +10,8 @@ android {
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 23)
     targetSdkVersion safeExtGet("targetSdkVersion", 35)
+    versionCode 1
+    versionName "1.0.0"
   }
 
   compileOptions {
@@ -24,7 +26,7 @@ android {
 
 dependencies {
   implementation project(':expo-modules-core')
-  implementation 'com.spotify.android:app-remote:0.8.0'
+  implementation files("${project.projectDir}/libs/spotify-app-remote-release-0.8.0.aar")
   implementation 'com.google.code.gson:gson:2.10.1'
 }
 

@@ -1,13 +1,28 @@
 import ExpoModulesCore
 import SpotifyiOS
 
-let CLIENT_ID = "18f1b52ab93b4c6480b1599b64d9be5b"
-let REDIRECT_URI = "partytime://callback"
+fileprivate let CLIENT_ID = "18f1b52ab93b4c6480b1599b64d9be5b"
+fileprivate let REDIRECT_URI = "partytime://callback"
 
-public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemotePlayerStateDelegate {
-  private var appRemote: SPTAppRemote?
-  private var connectPromise: Promise?
-  private var isSubscribed = false
+public class SpotifyAppRemoteModule: Module {
+  fileprivate var config: SPTConfiguration?
+  fileprivate var appRemote: SPTAppRemote?
+  fileprivate var delegateHandler: SpotifyDelegateHandler?
+  fileprivate var connectPromise: Promise?
+  fileprivate var isSubscribed = false
+
+  fileprivate func ensureAppRemote(accessToken: String) {
+    if config == nil {
+      config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
+      config!.playURI = ""
+    }
+    if appRemote == nil {
+      appRemote = SPTAppRemote(configuration: config!, logLevel: .debug)
+      delegateHandler = SpotifyDelegateHandler(module: self)
+      appRemote!.delegate = delegateHandler
+    }
+    appRemote!.connectionParameters.accessToken = accessToken
+  }
 
   public func definition() -> ModuleDefinition {
     Name("ExpoSpotifyAppRemote")
@@ -15,12 +30,24 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
     Events("onPlayerStateChanged", "onConnectionChanged")
 
     AsyncFunction("connect") { (accessToken: String, promise: Promise) in
-      let config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
-      self.appRemote = SPTAppRemote(configuration: config, logLevel: .debug)
-      self.appRemote?.connectionParameters.accessToken = accessToken
-      self.appRemote?.delegate = self
+      // Check Spotify is installed
+      if let url = URL(string: "spotify:"), !UIApplication.shared.canOpenURL(url) {
+        promise.reject("SPOTIFY_NOT_INSTALLED", "Spotify app is not installed")
+        return
+      }
+
+      self.ensureAppRemote(accessToken: accessToken)
       self.connectPromise = promise
-      self.appRemote?.connect()
+
+      self.appRemote!.connect()
+
+      // 6-second timeout — SPTAppRemote can hang silently
+      DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+        if let p = self.connectPromise {
+          self.connectPromise = nil
+          p.reject("CONNECT_TIMEOUT", "Spotify connect timed out — is Spotify open?")
+        }
+      }
     }
 
     AsyncFunction("authorize") { (uri: String, promise: Promise) in
@@ -53,6 +80,8 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
     AsyncFunction("disconnect") { (promise: Promise) in
       self.appRemote?.disconnect()
       self.appRemote = nil
+      self.config = nil
+      self.delegateHandler = nil
       self.isSubscribed = false
       promise.resolve(nil)
     }
@@ -150,7 +179,7 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
         promise.reject("NOT_CONNECTED", "Not connected to Spotify")
         return
       }
-      playerAPI.delegate = self
+      playerAPI.delegate = self.delegateHandler
       playerAPI.subscribe(toPlayerState: { _, error in
         if let error = error {
           promise.reject("SUBSCRIBE_ERROR", error.localizedDescription)
@@ -173,39 +202,7 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
     }
   }
 
-  // MARK: - SPTAppRemoteDelegate
-
-  public func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
-    connectPromise?.resolve(nil)
-    connectPromise = nil
-    sendEvent("onConnectionChanged", ["connected": true])
-  }
-
-  public func appRemote(_ appRemote: SPTAppRemote, didFailConnectionAttemptWithError error: Error) {
-    connectPromise?.reject("CONNECTION_FAILED", error.localizedDescription)
-    connectPromise = nil
-    sendEvent("onConnectionChanged", ["connected": false, "error": error.localizedDescription])
-  }
-
-  public func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
-    sendEvent("onConnectionChanged", ["connected": false, "error": error?.localizedDescription ?? ""])
-    // Auto-reconnect attempt
-    if let token = appRemote.connectionParameters.accessToken {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-        appRemote.connect()
-      }
-    }
-  }
-
-  // MARK: - SPTAppRemotePlayerStateDelegate
-
-  public func playerStateDidChange(_ playerState: SPTAppRemotePlayerState) {
-    sendEvent("onPlayerStateChanged", stateToDict(playerState))
-  }
-
-  // MARK: - Helpers
-
-  private func stateToDict(_ state: SPTAppRemotePlayerState) -> [String: Any] {
+  fileprivate func stateToDict(_ state: SPTAppRemotePlayerState) -> [String: Any] {
     return [
       "uri": state.track.uri,
       "trackName": state.track.name,
@@ -215,5 +212,52 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
       "positionMs": state.playbackPosition,
       "isPaused": state.isPaused,
     ]
+  }
+
+  fileprivate func handleConnect() {
+    connectPromise?.resolve(nil)
+    connectPromise = nil
+    sendEvent("onConnectionChanged", ["connected": true])
+  }
+
+  fileprivate func handleConnectionFailed(_ error: Error) {
+    connectPromise?.reject("CONNECTION_FAILED", error.localizedDescription)
+    connectPromise = nil
+    sendEvent("onConnectionChanged", ["connected": false, "error": error.localizedDescription])
+  }
+
+  fileprivate func handleDisconnect(_ error: Error?) {
+    sendEvent("onConnectionChanged", ["connected": false, "error": error?.localizedDescription ?? ""])
+  }
+
+  fileprivate func handlePlayerStateChange(_ state: SPTAppRemotePlayerState) {
+    sendEvent("onPlayerStateChanged", stateToDict(state))
+  }
+}
+
+// NSObject proxy — SPTAppRemoteDelegate requires NSObjectProtocol conformance,
+// but Expo's Module base class is not an NSObject subclass.
+fileprivate class SpotifyDelegateHandler: NSObject, SPTAppRemoteDelegate, SPTAppRemotePlayerStateDelegate {
+  weak var module: SpotifyAppRemoteModule?
+
+  init(module: SpotifyAppRemoteModule) {
+    self.module = module
+    super.init()
+  }
+
+  func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
+    module?.handleConnect()
+  }
+
+  func appRemote(_ appRemote: SPTAppRemote, didFailConnectionAttemptWithError error: Error?) {
+    module?.handleConnectionFailed(error ?? NSError(domain: "SpotifyAppRemote", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown connection error"]))
+  }
+
+  func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
+    module?.handleDisconnect(error)
+  }
+
+  func playerStateDidChange(_ playerState: SPTAppRemotePlayerState) {
+    module?.handlePlayerStateChange(playerState)
   }
 }

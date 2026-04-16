@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PartyTime Brand Guide v2.0</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    /* Core */
+    --obsidian: #080808;
+    --onyx: #111110;
+    --amber: #D4884A;
+    --amber-dim: rgba(212,136,74,0.45);
+    --amber-glow: rgba(212,136,74,0.10);
+    --papyrus: #F0ECE4;
+    --sandstone: rgba(200,194,180,0.55);
+    --dust: rgba(200,194,180,0.25);
+    --groove: rgba(58,52,40,0.25);
+    --kohl: rgba(58,52,40,0.35);
+    --glass: rgba(240,236,228,0.04);
+    --glass-border: rgba(240,236,228,0.08);
+    --glass-strong: rgba(240,236,228,0.07);
+    --scarab-red: #E05555;
+    --spotify: #1DB954;
+
+    /* Type */
+    --serif: 'Instrument Serif', Georgia, serif;
+    --mono: 'Space Mono', 'Menlo', monospace;
+    --sans: 'Inter', -apple-system, sans-serif;
+  }
+
+  body {
+    background: var(--obsidian);
+    color: var(--papyrus);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* --- LAYOUT --- */
+  .page {
+    min-height: 100vh;
+    padding: 80px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .page + .page { border-top: 1px solid var(--groove); }
+  .page-number {
+    position: absolute;
+    top: 40px;
+    right: 40px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dust);
+    letter-spacing: 2px;
+  }
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 32px;
+  }
+  .page-title {
+    font-family: var(--serif);
+    font-size: clamp(48px, 8vw, 96px);
+    font-weight: 400;
+    line-height: 1.05;
+    margin-bottom: 40px;
+    max-width: 800px;
+  }
+  .page-title em {
+    font-style: italic;
+    color: var(--amber);
+  }
+  .subtitle {
+    font-family: var(--sans);
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--sandstone);
+    max-width: 560px;
+    line-height: 1.7;
+    margin-bottom: 48px;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  /* --- COVER --- */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 100vh;
+    padding: 80px 40px;
+    position: relative;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--amber-glow) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cover-wordmark {
+    font-family: var(--sans);
+    font-size: clamp(64px, 12vw, 140px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 0.95;
+    margin-bottom: 24px;
+  }
+  .cover-sub {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--dust);
+    margin-bottom: 8px;
+  }
+  .cover-version {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--groove);
+    letter-spacing: 2px;
+  }
+
+  /* --- GLASS CARDS --- */
+  .glass-card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .glass-card-strong {
+    background: var(--glass-strong);
+    border: 1px solid rgba(240,236,228,0.1);
+  }
+  .glass-card h3 {
+    font-family: var(--serif);
+    font-size: 24px;
+    font-weight: 400;
+    margin-bottom: 12px;
+  }
+  .glass-card p {
+    font-size: 14px;
+    color: var(--sandstone);
+    line-height: 1.7;
+  }
+
+  /* --- COLOR SWATCHES --- */
+  .swatch-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+  .swatch {
+    flex: 1;
+    min-width: 140px;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .swatch-color {
+    height: 100px;
+    border-radius: 16px 16px 0 0;
+    position: relative;
+  }
+  .swatch-color.bordered {
+    border: 1px solid var(--glass-border);
+    border-bottom: none;
+  }
+  .swatch-info {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-top: none;
+    border-radius: 0 0 16px 16px;
+    padding: 14px 16px;
+  }
+  .swatch-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .swatch-hex {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dust);
+  }
+
+  /* --- TYPE SPECIMENS --- */
+  .type-specimen {
+    margin-bottom: 48px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--groove);
+  }
+  .type-specimen:last-child { border-bottom: none; }
+  .type-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dust);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .type-display-serif {
+    font-family: var(--serif);
+    font-size: clamp(40px, 6vw, 72px);
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+  .type-display-sans {
+    font-family: var(--sans);
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+  .type-display-mono {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+  .type-body {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 300;
+    color: var(--sandstone);
+    max-width: 480px;
+    line-height: 1.7;
+  }
+
+  /* --- SYMBOL GRID --- */
+  .symbol-card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 28px;
+    text-align: center;
+    transition: border-color 0.3s;
+  }
+  .symbol-card:hover {
+    border-color: var(--amber-dim);
+  }
+  .symbol-glyph {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+    opacity: 0.7;
+  }
+  .symbol-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 8px;
+  }
+  .symbol-mapping {
+    font-size: 12px;
+    color: var(--dust);
+    line-height: 1.5;
+  }
+
+  /* --- GLASS DEMO --- */
+  .glass-demo {
+    background: linear-gradient(135deg, rgba(212,136,74,0.06) 0%, rgba(240,236,228,0.02) 100%);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .glass-demo::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    border-radius: 24px;
+    border: 1px solid transparent;
+    background: linear-gradient(135deg, rgba(240,236,228,0.12), transparent 60%) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .glass-grid-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(var(--glass-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--glass-border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.3;
+    pointer-events: none;
+    border-radius: 24px;
+  }
+
+  /* --- MOTION DEMO --- */
+  .motion-strip {
+    display: flex;
+    gap: 24px;
+    overflow-x: auto;
+    padding: 20px 0;
+  }
+  .motion-card {
+    flex-shrink: 0;
+    width: 200px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+  }
+  .motion-preview {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 16px;
+    border-radius: 12px;
+    background: var(--amber);
+    animation-duration: 2s;
+    animation-iteration-count: infinite;
+  }
+  .motion-spring { animation-name: spring-pulse; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .motion-fade { animation-name: fade-cycle; }
+  .motion-slide { animation-name: slide-up; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes spring-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+  }
+  @keyframes fade-cycle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  @keyframes slide-up {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+  .motion-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  .motion-desc {
+    font-size: 12px;
+    color: var(--dust);
+  }
+
+  /* --- VOICE EXAMPLES --- */
+  .voice-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin-bottom: 2px;
+  }
+  .voice-do, .voice-dont {
+    padding: 20px 24px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .voice-do {
+    background: rgba(212,136,74,0.06);
+    border-left: 2px solid var(--amber);
+  }
+  .voice-dont {
+    background: rgba(224,85,85,0.06);
+    border-left: 2px solid var(--scarab-red);
+    color: var(--sandstone);
+  }
+  .voice-header {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: block;
+  }
+  .voice-do .voice-header { color: var(--amber); }
+  .voice-dont .voice-header { color: var(--scarab-red); }
+
+  /* --- LOGO SECTION --- */
+  .logo-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 40px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .logo-display::after {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--amber-glow) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .logo-wordmark {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 64px;
+    letter-spacing: -1px;
+    position: relative;
+    z-index: 1;
+  }
+  .logo-icon-demo {
+    width: 120px;
+    height: 120px;
+    border-radius: 28px;
+    background: var(--onyx);
+    border: 1px solid var(--kohl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+  }
+  /* Sistrum abstracted as play-in-arch */
+  .sistrum-mark {
+    width: 52px;
+    height: 64px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .sistrum-arch {
+    width: 44px;
+    height: 36px;
+    border: 2.5px solid var(--amber);
+    border-bottom: none;
+    border-radius: 22px 22px 0 0;
+  }
+  .sistrum-handle {
+    width: 2.5px;
+    height: 14px;
+    background: var(--amber);
+  }
+  .sistrum-play {
+    width: 0;
+    height: 0;
+    border-left: 12px solid var(--amber);
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-35%);
+  }
+
+  /* --- UI MOCK --- */
+  .ui-mock {
+    background: var(--onyx);
+    border: 1px solid var(--kohl);
+    border-radius: 24px;
+    padding: 24px;
+    max-width: 380px;
+    margin: 0 auto;
+  }
+  .mock-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .mock-title {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  .mock-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--amber);
+  }
+  .mock-np {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 8px 32px var(--amber-glow);
+  }
+  .mock-album {
+    width: 100%;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #2a2420, #1a1614);
+    border-radius: 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .mock-album::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(240,236,228,0.06);
+    border-radius: 14px;
+  }
+  .mock-album-text {
+    font-family: var(--serif);
+    font-size: 20px;
+    color: var(--dust);
+    font-style: italic;
+  }
+  .mock-track-info { text-align: center; }
+  .mock-track-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .mock-track-artist {
+    font-size: 13px;
+    color: var(--sandstone);
+    margin-bottom: 4px;
+  }
+  .mock-track-by {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dust);
+  }
+  .mock-progress {
+    margin: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mock-progress-time {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dust);
+    width: 28px;
+  }
+  .mock-progress-track {
+    flex: 1;
+    height: 3px;
+    background: var(--groove);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .mock-progress-fill {
+    width: 35%;
+    height: 100%;
+    background: var(--amber);
+    border-radius: 2px;
+  }
+  .mock-controls {
+    display: flex;
+    gap: 8px;
+  }
+  .mock-play {
+    flex: 1;
+    background: var(--amber);
+    border: none;
+    border-radius: 12px;
+    padding: 12px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .mock-skip {
+    background: var(--groove);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 18px;
+    color: var(--sandstone);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .mock-queue-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+  }
+  .mock-queue-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dust);
+    width: 14px;
+  }
+  .mock-queue-art {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #2a2420, #1a1614);
+  }
+  .mock-queue-info { flex: 1; }
+  .mock-queue-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .mock-queue-artist {
+    font-size: 11px;
+    color: var(--sandstone);
+  }
+
+  /* --- TEXTURE DEMO --- */
+  .texture-card {
+    border-radius: 20px;
+    padding: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+  .texture-card .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--amber);
+    position: relative;
+    z-index: 1;
+  }
+  .texture-glass {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+  }
+  .texture-grid {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+  }
+  .texture-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(240,236,228,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240,236,228,0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+    border-radius: 20px;
+  }
+  .texture-dotmatrix {
+    background: var(--onyx);
+    border: 1px solid var(--kohl);
+  }
+  .texture-dotmatrix::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(240,236,228,0.06) 1px, transparent 1px);
+    background-size: 8px 8px;
+    border-radius: 20px;
+  }
+  .texture-scanline {
+    background: var(--onyx);
+    border: 1px solid var(--kohl);
+  }
+  .texture-scanline::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(240,236,228,0.02) 2px,
+      rgba(240,236,228,0.02) 4px
+    );
+    border-radius: 20px;
+  }
+
+  /* --- SPACING DEMO --- */
+  .spacing-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .spacing-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .spacing-bar {
+    background: var(--amber);
+    border-radius: 4px;
+    width: 32px;
+    opacity: 0.7;
+  }
+  .spacing-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dust);
+    letter-spacing: 1px;
+  }
+
+  /* --- RADIUS DEMO --- */
+  .radius-row {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .radius-demo {
+    width: 80px;
+    height: 80px;
+    border: 1px solid var(--amber-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .radius-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dust);
+  }
+
+  /* --- DIVIDER --- */
+  .divider {
+    height: 1px;
+    background: var(--groove);
+    margin: 48px 0;
+  }
+
+  /* --- RULES LIST --- */
+  .rules-list {
+    list-style: none;
+    padding: 0;
+  }
+  .rules-list li {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--groove);
+    font-size: 15px;
+    color: var(--sandstone);
+    line-height: 1.6;
+  }
+  .rules-list li:last-child { border-bottom: none; }
+  .rules-list li strong {
+    color: var(--papyrus);
+    font-weight: 600;
+  }
+  .rule-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--amber);
+    margin-right: 12px;
+    letter-spacing: 1px;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .page { padding: 48px 20px; }
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .voice-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== COVER ==================== -->
+<section class="cover">
+  <div class="cover-sub">BRAND GUIDE</div>
+  <div class="cover-wordmark">PARTYTIME</div>
+  <div class="cover-version">V2.0 &mdash; APRIL 2026</div>
+</section>
+
+<!-- ==================== 01 ESSENCE ==================== -->
+<section class="page">
+  <div class="page-number">01</div>
+  <div class="section-label">Brand Essence</div>
+  <h1 class="page-title">Everyone's digital <em>jukebox.</em></h1>
+  <p class="subtitle">
+    PartyTime puts the music in everyone's hands. No coins, no gatekeepers &mdash; just the room deciding what plays next. Old-soul music culture meets frictionless modern tech.
+  </p>
+
+  <div class="grid-3">
+    <div class="glass-card">
+      <h3>Warm, not corporate</h3>
+      <p>The product feels like a warm lamp in a dark room. Inviting, ambient, human.</p>
+    </div>
+    <div class="glass-card">
+      <h3>Transparent, not opaque</h3>
+      <p>Like a Nothing Phone or clear-shell Walkman &mdash; the beauty is in the visible structure. Show the grid. Expose the skeleton.</p>
+    </div>
+    <div class="glass-card">
+      <h3>Chic, not geek</h3>
+      <p>Technology that wears well. The interface is fashion-forward, not dashboard-heavy. Every pixel is considered.</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="glass-card">
+      <h3>Core Tension</h3>
+      <p>The warmth of a jukebox in a dive bar, the precision of an Apple product, the honesty of transparent hardware. These three things shouldn't work together &mdash; but they do.</p>
+    </div>
+    <div class="glass-card">
+      <h3>What We're Not</h3>
+      <p>Not a DJ app. Not a social network. Not themed. Not dark-and-edgy. We're warm-and-inviting with visible bones.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 02 COLOR ==================== -->
+<section class="page">
+  <div class="page-number">02</div>
+  <div class="section-label">Color System</div>
+  <h1 class="page-title">Dark mode <em>only.</em></h1>
+  <p class="subtitle">
+    This is a nightlife product. The screen should feel like a warm lamp in a dark room. Never pure white, never pure black &mdash; everything has warmth.
+  </p>
+
+  <h3 style="font-family: var(--serif); margin-bottom: 20px;">Primary</h3>
+  <div class="swatch-row">
+    <div class="swatch">
+      <div class="swatch-color" style="background: #080808;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Obsidian</div>
+        <div class="swatch-hex">#080808</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: #111110;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Onyx</div>
+        <div class="swatch-hex">#111110</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: #D4884A;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Amber</div>
+        <div class="swatch-hex">#D4884A</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: #F0ECE4;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Papyrus</div>
+        <div class="swatch-hex">#F0ECE4</div>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="font-family: var(--serif); margin-bottom: 20px;">Secondary</h3>
+  <div class="swatch-row">
+    <div class="swatch">
+      <div class="swatch-color bordered" style="background: rgba(240,236,228,0.04);"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Glass</div>
+        <div class="swatch-hex">papyrus @ 4%</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color bordered" style="background: rgba(58,52,40,0.3);"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Groove</div>
+        <div class="swatch-hex">warm gray @ 30%</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: #E05555;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Scarab Red</div>
+        <div class="swatch-hex">#E05555</div>
+      </div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background: #1DB954;"></div>
+      <div class="swatch-info">
+        <div class="swatch-name">Spotify Green</div>
+        <div class="swatch-hex">#1DB954 &mdash; login only</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <ul class="rules-list">
+    <li><span class="rule-num">01</span> <strong>Never pure white or pure black.</strong> Everything has warmth baked in.</li>
+    <li><span class="rule-num">02</span> <strong>Amber is sacred.</strong> Primary actions, NOW PLAYING label, active states, ambient glow. Never for backgrounds.</li>
+    <li><span class="rule-num">03</span> <strong>Glow, don't highlight.</strong> Interactive elements get a warm amber shadow, not a color-fill state.</li>
+    <li><span class="rule-num">04</span> <strong>Glass over solid.</strong> Card backgrounds should feel translucent &mdash; 4-7% Papyrus over Obsidian. Borders at 8-10%.</li>
+  </ul>
+</section>
+
+<!-- ==================== 03 TYPOGRAPHY ==================== -->
+<section class="page">
+  <div class="page-number">03</div>
+  <div class="section-label">Typography</div>
+  <h1 class="page-title">Three voices, <em>one system.</em></h1>
+
+  <div class="type-specimen">
+    <div class="type-meta">Display &mdash; Instrument Serif / Editorial headlines</div>
+    <div class="type-display-serif">Everyone's digital jukebox.</div>
+    <div class="type-display-serif" style="font-style: italic; color: var(--amber);">Music is communal.</div>
+    <p class="type-body">Used for hero headlines, emotional moments, and brand-level statements. The serif brings warmth and editorial authority &mdash; like a magazine masthead for a music product.</p>
+  </div>
+
+  <div class="type-specimen">
+    <div class="type-meta">UI &mdash; Inter / Interface text</div>
+    <div class="type-display-sans">PARTYTIME</div>
+    <div style="font-family: var(--sans); font-size: 17px; font-weight: 700; margin-bottom: 4px;">Oshun (with EARTHGANG & 6LACK)</div>
+    <div style="font-family: var(--sans); font-size: 14px; color: var(--sandstone); margin-bottom: 16px;">Spillage Village, EARTHGANG, 6LACK</div>
+    <p class="type-body">Workhorse font. Track titles, artist names, button labels. Heavy weights for titles (700-800), light for body (300-400). Never decorative &mdash; always legible.</p>
+  </div>
+
+  <div class="type-specimen">
+    <div class="type-meta">System &mdash; Space Mono / Labels, codes, metadata</div>
+    <div class="type-display-mono">NOW PLAYING</div>
+    <div class="type-display-mono" style="color: var(--dust); letter-spacing: 4px;">R6DSVB &nbsp; tap to copy</div>
+    <div class="type-display-mono" style="color: var(--sandstone);">queued by Anubis &nbsp;&middot;&nbsp; 3:42</div>
+    <p class="type-body" style="margin-top: 16px;">Labels, lobby codes, timestamps, technical metadata. Always uppercase with wide tracking. Feels stamped or etched &mdash; like text on vintage equipment panels.</p>
+  </div>
+</section>
+
+<!-- ==================== 04 TEXTURE ==================== -->
+<section class="page">
+  <div class="page-number">04</div>
+  <div class="section-label">Texture &amp; Surface</div>
+  <h1 class="page-title">Transparent <em>by design.</em></h1>
+  <p class="subtitle">
+    Inspired by clear-shell hardware &mdash; the Nothing Phone, transparent Walkmans, iMac G3. The UI shows its structure. Glass surfaces, visible grids, dot-matrix patterns.
+  </p>
+
+  <div class="grid-2">
+    <div class="texture-card texture-glass">
+      <span class="label">Glass Surface</span>
+    </div>
+    <div class="texture-card texture-grid">
+      <span class="label">Exposed Grid</span>
+    </div>
+    <div class="texture-card texture-dotmatrix">
+      <span class="label">Dot Matrix</span>
+    </div>
+    <div class="texture-card texture-scanline">
+      <span class="label">Scan Lines</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <ul class="rules-list">
+    <li><span class="rule-num">01</span> <strong>Glass is the primary surface.</strong> Cards use translucent backgrounds (4-7% Papyrus) with subtle borders. Like frosted acrylic over a dark chassis.</li>
+    <li><span class="rule-num">02</span> <strong>Grid reveals structure.</strong> Subtle grid overlays can appear behind hero sections &mdash; like the visible PCB traces on a Nothing Phone. Never over text.</li>
+    <li><span class="rule-num">03</span> <strong>Dot-matrix for accents.</strong> Loading states, empty-state backgrounds, or subtle pattern fills. References Artifact's branding and LED displays on vintage audio.</li>
+    <li><span class="rule-num">04</span> <strong>Scan lines are a whisper.</strong> 2px repeating lines at 2% opacity. Only on transitions or background textures. If you have to squint to see them, they're right.</li>
+  </ul>
+</section>
+
+<!-- ==================== 05 SYMBOLS ==================== -->
+<section class="page">
+  <div class="page-number">05</div>
+  <div class="section-label">Iconography &amp; Symbols</div>
+  <h1 class="page-title">Hidden in <em>plain sight.</em></h1>
+  <p class="subtitle">
+    Egyptian symbols woven subtly into the geometry of the product. Never literal, never themed. A first-time user should never think "Egyptian." A returning user might notice and smile.
+  </p>
+
+  <div class="grid-3">
+    <div class="symbol-card">
+      <span class="symbol-glyph" style="font-size: 40px;">&#x1F3B6;</span>
+      <div class="symbol-name">Sistrum</div>
+      <div class="symbol-mapping">App icon &mdash; ancient Egyptian musical instrument (Hathor's rattle). U-frame with play triangle nested inside.</div>
+    </div>
+    <div class="symbol-card">
+      <span class="symbol-glyph" style="font-size: 40px;">&#x25CB;<span style="font-size: 16px; display: block; margin-top: -12px;">&#x2501;</span></span>
+      <div class="symbol-name">Shen Ring</div>
+      <div class="symbol-mapping">Save / add-to-library &mdash; circle with base, meaning "eternity, protection." Keeping a song forever.</div>
+    </div>
+    <div class="symbol-card">
+      <span class="symbol-glyph">&#x25AD;</span>
+      <div class="symbol-name">Cartouche</div>
+      <div class="symbol-mapping">User name chips &mdash; rounded enclosure for identity</div>
+    </div>
+    <div class="symbol-card">
+      <span class="symbol-glyph">&#x2600;</span>
+      <div class="symbol-name">Winged Sun</div>
+      <div class="symbol-mapping">Album glow halo &mdash; the amber shadow radiating outward</div>
+    </div>
+    <div class="symbol-card">
+      <span class="symbol-glyph">&#x25B3;</span>
+      <div class="symbol-name">Obelisk</div>
+      <div class="symbol-mapping">Progress bar terminals &mdash; tapered endpoints</div>
+    </div>
+    <div class="symbol-card">
+      <span class="symbol-glyph">&#x2662;</span>
+      <div class="symbol-name">Scarab</div>
+      <div class="symbol-mapping">Loading / transition &mdash; transformation motif</div>
+    </div>
+  </div>
+
+  <div class="glass-card">
+    <h3>The Rule</h3>
+    <p>Abstract, never illustrative. Use the <em>proportions and geometry</em> of Egyptian symbols, not their visual likeness. These become part of the UI structure &mdash; not decorations layered on top. Discoverable, not obvious.</p>
+  </div>
+</section>
+
+<!-- ==================== 06 LOGO ==================== -->
+<section class="page">
+  <div class="page-number">06</div>
+  <div class="section-label">Logo System</div>
+  <h1 class="page-title">Mark &amp; <em>wordmark.</em></h1>
+
+  <div class="grid-2">
+    <div class="logo-display">
+      <span class="logo-wordmark">PARTYTIME</span>
+    </div>
+    <div class="logo-display">
+      <div class="logo-icon-demo">
+        <div class="sistrum-mark">
+          <div class="sistrum-arch"></div>
+          <div class="sistrum-handle"></div>
+          <div class="sistrum-play"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="glass-card">
+      <h3>Wordmark</h3>
+      <p>Inter 800, tight tracking. All caps. Clean and direct. The wordmark is the primary identifier in-app and on marketing materials.</p>
+    </div>
+    <div class="glass-card">
+      <h3>Icon Mark</h3>
+      <p>Sistrum abstracted into a modern mark. The U-shaped frame of the ancient instrument becomes a rounded arch, with a play triangle nested where the crossbars would be. Reads as "play" to everyone, "sistrum" to those who know. Hathor's instrument &mdash; goddess of music and joy.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 07 MOTION ==================== -->
+<section class="page">
+  <div class="page-number">07</div>
+  <div class="section-label">Motion</div>
+  <h1 class="page-title">Physics, <em>not timelines.</em></h1>
+  <p class="subtitle">
+    Spring-based, never linear. Quick and warm. Every animation communicates a state change &mdash; nothing moves for its own sake.
+  </p>
+
+  <div class="motion-strip">
+    <div class="motion-card">
+      <div class="motion-preview motion-spring"></div>
+      <div class="motion-name">Spring</div>
+      <div class="motion-desc">Tension: 60, Friction: 9. Track changes, card entrances.</div>
+    </div>
+    <div class="motion-card">
+      <div class="motion-preview motion-fade"></div>
+      <div class="motion-name">Fade</div>
+      <div class="motion-desc">200-300ms ease. Connection states, overlays.</div>
+    </div>
+    <div class="motion-card">
+      <div class="motion-preview motion-slide"></div>
+      <div class="motion-name">Slide</div>
+      <div class="motion-desc">Spring ease with translate. Toasts, cards appearing.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 08 VOICE ==================== -->
+<section class="page">
+  <div class="page-number">08</div>
+  <div class="section-label">Brand Voice</div>
+  <h1 class="page-title">Casual but <em>considered.</em></h1>
+  <p class="subtitle">
+    Write like you're texting a friend who has good taste. Confident, minimal, human. Say it once.
+  </p>
+
+  <div style="border-radius: 16px; overflow: hidden; margin-bottom: 40px;">
+    <div class="voice-row">
+      <div class="voice-do">
+        <span class="voice-header">Do</span>
+        Add a song to get the party started
+      </div>
+      <div class="voice-dont">
+        <span class="voice-header">Don't</span>
+        No songs in queue. Please add a song to begin playback.
+      </div>
+    </div>
+    <div class="voice-row">
+      <div class="voice-do">
+        <span class="voice-header">Do</span>
+        Couldn't connect &mdash; is Spotify open?
+      </div>
+      <div class="voice-dont">
+        <span class="voice-header">Don't</span>
+        Error: Connection to Spotify failed. Please try again.
+      </div>
+    </div>
+    <div class="voice-row">
+      <div class="voice-do">
+        <span class="voice-header">Do</span>
+        queued by Jay
+      </div>
+      <div class="voice-dont">
+        <span class="voice-header">Don't</span>
+        Added by: Jay DeShong
+      </div>
+    </div>
+    <div class="voice-row">
+      <div class="voice-do">
+        <span class="voice-header">Do</span>
+        Saved to library
+      </div>
+      <div class="voice-dont">
+        <span class="voice-header">Don't</span>
+        Success! Song has been saved to your Spotify library.
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="glass-card">
+      <h3>Words we use</h3>
+      <p>Queue. Lobby. Host. Skip. Vibe (sparingly).</p>
+    </div>
+    <div class="glass-card">
+      <h3>Words we avoid</h3>
+      <p>Error. Failure. Invalid. Please. "Oops." Exclamation marks in UI (toasts only).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 09 SPATIAL ==================== -->
+<section class="page">
+  <div class="page-number">09</div>
+  <div class="section-label">Spatial System</div>
+  <h1 class="page-title">4px <em>base unit.</em></h1>
+
+  <div class="spacing-row">
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 4px;"></div>
+      <span class="spacing-label">4</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 8px;"></div>
+      <span class="spacing-label">8</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 12px;"></div>
+      <span class="spacing-label">12</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 16px;"></div>
+      <span class="spacing-label">16</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 20px;"></div>
+      <span class="spacing-label">20</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 24px;"></div>
+      <span class="spacing-label">24</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 32px;"></div>
+      <span class="spacing-label">32</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 40px;"></div>
+      <span class="spacing-label">40</span>
+    </div>
+    <div class="spacing-block">
+      <div class="spacing-bar" style="height: 48px;"></div>
+      <span class="spacing-label">48</span>
+    </div>
+  </div>
+
+  <h3 style="font-family: var(--serif); margin-bottom: 20px;">Border Radius</h3>
+  <div class="radius-row">
+    <div>
+      <div class="radius-demo" style="border-radius: 24px;"></div>
+      <div class="radius-label" style="margin-top: 8px; text-align: center;">24 &mdash; cards</div>
+    </div>
+    <div>
+      <div class="radius-demo" style="border-radius: 16px;"></div>
+      <div class="radius-label" style="margin-top: 8px; text-align: center;">16 &mdash; buttons</div>
+    </div>
+    <div>
+      <div class="radius-demo" style="border-radius: 14px;"></div>
+      <div class="radius-label" style="margin-top: 8px; text-align: center;">14 &mdash; album art</div>
+    </div>
+    <div>
+      <div class="radius-demo" style="border-radius: 10px;"></div>
+      <div class="radius-label" style="margin-top: 8px; text-align: center;">10 &mdash; chips</div>
+    </div>
+    <div>
+      <div class="radius-demo" style="border-radius: 50%;"></div>
+      <div class="radius-label" style="margin-top: 8px; text-align: center;">50% &mdash; avatar</div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 10 UI MOCK ==================== -->
+<section class="page">
+  <div class="page-number">10</div>
+  <div class="section-label">Application</div>
+  <h1 class="page-title">In <em>context.</em></h1>
+
+  <div class="grid-2">
+    <div>
+      <p class="subtitle" style="margin-bottom: 32px;">
+        Glass surfaces, warm glow, visible structure. The album art is the hero &mdash; the UI frames it, never competes. Controls are confident and minimal.
+      </p>
+      <ul class="rules-list">
+        <li><span class="rule-num">01</span> <strong>Now Playing is the hero.</strong> Largest card, amber glow shadow, album rolodex, full track info + controls.</li>
+        <li><span class="rule-num">02</span> <strong>Queue items are glass cards.</strong> Translucent, bordered, with vote controls and queue position.</li>
+        <li><span class="rule-num">03</span> <strong>Search is utility.</strong> Compact rows, minimal chrome. Don't decorate &mdash; get out of the way.</li>
+      </ul>
+    </div>
+    <div class="ui-mock">
+      <div class="mock-header">
+        <span class="mock-title">PARTYTIME</span>
+        <span class="mock-label">HOST</span>
+      </div>
+      <div class="mock-np">
+        <div class="mock-album">
+          <span class="mock-album-text">Album Art</span>
+        </div>
+        <div class="mock-track-info">
+          <div class="mock-label" style="margin-bottom: 8px;">NOW PLAYING</div>
+          <div class="mock-track-title">Oshun</div>
+          <div class="mock-track-artist">Spillage Village, EARTHGANG</div>
+          <div class="mock-track-by">queued by Horus</div>
+        </div>
+        <div class="mock-progress">
+          <span class="mock-progress-time">1:24</span>
+          <div class="mock-progress-track">
+            <div class="mock-progress-fill"></div>
+          </div>
+          <span class="mock-progress-time" style="text-align: right;">4:02</span>
+        </div>
+        <div class="mock-controls">
+          <button class="mock-play">||</button>
+          <button class="mock-skip">&gt;&gt;</button>
+        </div>
+      </div>
+      <div style="font-family: var(--mono); font-size: 9px; letter-spacing: 2px; color: var(--dust); text-transform: uppercase; margin-bottom: 10px;">Up Next</div>
+      <div class="mock-queue-item">
+        <span class="mock-queue-num">1</span>
+        <div class="mock-queue-art"></div>
+        <div class="mock-queue-info">
+          <div class="mock-queue-title">Moon</div>
+          <div class="mock-queue-artist">Kanye West</div>
+        </div>
+      </div>
+      <div class="mock-queue-item">
+        <span class="mock-queue-num">2</span>
+        <div class="mock-queue-art"></div>
+        <div class="mock-queue-info">
+          <div class="mock-queue-title">24</div>
+          <div class="mock-queue-artist">Kanye West</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 11 CLOSING ==================== -->
+<section class="page" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+  <div class="section-label">The Standard</div>
+  <h1 class="page-title" style="text-align: center;">Candlelit, <em>not neon.</em></h1>
+  <p class="subtitle" style="text-align: center; margin: 0 auto;">
+    Transparent but warm. Structured but alive. Every decision should feel like it was made by someone who cares about music and cares about design. Because it was.
+  </p>
+</section>
+
+</body>
+</html>

@@ -1,24 +1,69 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, Image, StyleSheet, KeyboardAvoidingView, Platform,
+  View, Text, TextInput, TouchableOpacity, Image, StyleSheet,
+  KeyboardAvoidingView, Platform, Animated, Dimensions,
 } from "react-native";
+import { palette, fonts, radius, glow, space } from "./theme";
+import { Logo } from "./Logo";
+import { GlassCard, ExposedGrid } from "./Glass";
 import api from "./api";
 import socket from "./socket";
 
-export default function HomeScreen({ user, onLogout, onJoinLobby }) {
+const { height: SCREEN_H } = Dimensions.get("window");
+
+/**
+ * HomeScreen — Artifact-inspired layout.
+ *
+ * Top third: Sirius mark (large dot-matrix, centered)
+ * Middle: PARTYTIME wordmark + tagline
+ * Below: Create / Join actions
+ * Bottom: signed-in-as bar
+ *
+ * Same spatial hierarchy as Artifact's login screen.
+ */
+export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings }) {
   const [lobbyCode, setLobbyCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastRef = useRef(null);
+
+  // Entrance animations
+  const logoFade = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(0.85)).current;
+  const titleFade = useRef(new Animated.Value(0)).current;
+  const actionsFade = useRef(new Animated.Value(0)).current;
+  const actionsSlide = useRef(new Animated.Value(16)).current;
+  const footerFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(logoFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.spring(logoScale, { toValue: 1, tension: 40, friction: 7, useNativeDriver: true }),
+      ]),
+      Animated.timing(titleFade, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(actionsFade, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(actionsSlide, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]),
+      Animated.timing(footerFade, { toValue: 1, duration: 250, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  function showToast(msg) {
+    setToast(msg);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToast(null), 3500);
+  }
 
   function joinLobby(code, host) {
     if (!socket.connected) socket.connect();
     socket.emit("join-lobby", { code, name: user.name, host });
-
     socket.once("error", (msg) => {
-      console.warn("Join error:", msg);
       setLoading(false);
+      showToast(msg || "Couldn't join that lobby");
       socket.disconnect();
     });
-
     socket.once("lobby-state", (lobby) => {
       onJoinLobby({ code, isHost: host, initialState: lobby });
     });
@@ -28,10 +73,15 @@ export default function HomeScreen({ user, onLogout, onJoinLobby }) {
     setLoading(true);
     try {
       const res = await api("/api/lobbies", { method: "POST" });
+      if (!res.ok) {
+        showToast(`Couldn't create lobby (${res.status})`);
+        setLoading(false);
+        return;
+      }
       const { code } = await res.json();
       joinLobby(code, true);
-    } catch {
-      console.warn("Failed to create lobby");
+    } catch (e) {
+      showToast("Couldn't create lobby — check connection");
     }
     setLoading(false);
   }
@@ -44,109 +94,201 @@ export default function HomeScreen({ user, onLogout, onJoinLobby }) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={s.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.profileRow}>
-        {user.image && <Image source={{ uri: user.image }} style={styles.avatar} />}
-        <Text style={styles.profileName}>{user.name}</Text>
-        <TouchableOpacity onPress={onLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+      {/* Background grid */}
+      <ExposedGrid />
+
+      {/* Toast */}
+      {toast && (
+        <GlassCard intensity={60} borderRadius={radius.pill} style={s.toast}>
+          <Text style={s.toastText}>{toast}</Text>
+        </GlassCard>
+      )}
+
+      {/* ── Top section: Dot-matrix logo mark (Artifact style) ── */}
+      <View style={s.topSection}>
+        <Animated.View style={{ opacity: logoFade, transform: [{ scale: logoScale }] }}>
+          <Logo dotSize={4} gap={2} color={palette.amber} />
+        </Animated.View>
       </View>
 
-      <Text style={styles.title}>PartyTime</Text>
-      <Text style={styles.subtitle}>Create or join a lobby.</Text>
+      {/* ── Middle section: Wordmark + tagline + actions ── */}
+      <View style={s.midSection}>
+        <Animated.View style={[s.brandBlock, { opacity: titleFade }]}>
+          <Text style={s.wordmark}>PARTYTIME</Text>
+          <Text style={s.tagline}>everyone's digital jukebox</Text>
+        </Animated.View>
 
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.createBtn}
-          onPress={createLobby}
-          activeOpacity={0.8}
-          disabled={loading}
-        >
-          <Text style={styles.createText}>
-            {loading ? "Creating..." : "Create a Lobby"}
-          </Text>
-        </TouchableOpacity>
+        <Animated.View style={[s.actions, { opacity: actionsFade, transform: [{ translateY: actionsSlide }] }]}>
+          <TouchableOpacity
+            style={s.createBtn}
+            onPress={createLobby}
+            activeOpacity={0.8}
+            disabled={loading}
+          >
+            <Text style={s.createText}>
+              {loading ? "Creating..." : "Create a Lobby"}
+            </Text>
+          </TouchableOpacity>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or join one</Text>
-          <View style={styles.dividerLine} />
-        </View>
+          <View style={s.dividerRow}>
+            <View style={s.dividerLine} />
+            <Text style={s.dividerText}>or join one</Text>
+            <View style={s.dividerLine} />
+          </View>
 
-        <View style={styles.joinRow}>
-          <TextInput
-            style={styles.codeInput}
-            placeholder="Lobby code"
-            placeholderTextColor="#888"
-            value={lobbyCode}
-            onChangeText={setLobbyCode}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            onSubmitEditing={handleJoin}
-            returnKeyType="join"
-          />
-          <TouchableOpacity style={styles.joinBtn} onPress={handleJoin} activeOpacity={0.8}>
-            <Text style={styles.joinText}>Join</Text>
+          <View style={s.joinRow}>
+            <GlassCard intensity={25} borderRadius={radius.button} style={s.codeCard}>
+              <TextInput
+                style={s.codeInput}
+                placeholder="LOBBY CODE"
+                placeholderTextColor={palette.dust}
+                value={lobbyCode}
+                onChangeText={setLobbyCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                onSubmitEditing={handleJoin}
+                returnKeyType="join"
+              />
+            </GlassCard>
+            <TouchableOpacity style={s.joinBtn} onPress={handleJoin} activeOpacity={0.8}>
+              <Text style={s.joinText}>Join</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+
+      {/* ── Bottom section: Signed-in bar ── */}
+      <Animated.View style={[s.footer, { opacity: footerFade }]}>
+        <View style={s.footerRow}>
+          {user.image && <Image source={{ uri: user.image }} style={s.avatar} />}
+          <Text style={s.footerName}>{user.name}</Text>
+          <Text style={s.footerDot}>{" \u00B7 "}</Text>
+          <TouchableOpacity onPress={onOpenSettings}>
+            <Text style={s.footerLink}>settings</Text>
+          </TouchableOpacity>
+          <Text style={s.footerDot}>{" \u00B7 "}</Text>
+          <TouchableOpacity onPress={onLogout}>
+            <Text style={s.footerLink}>logout</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0a0a0a",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
+    backgroundColor: palette.obsidian,
   },
-  profileRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 48,
+  // Toast
+  toast: {
+    position: "absolute", top: 50, left: 20, right: 20, zIndex: 100,
+    padding: 14, alignItems: "center",
   },
-  avatar: { width: 28, height: 28, borderRadius: 14 },
-  profileName: { color: "#888", fontSize: 13 },
-  logoutText: { color: "#888", fontSize: 11, textDecorationLine: "underline" },
-  title: { color: "#fff", fontSize: 36, fontWeight: "800", letterSpacing: -0.5, marginBottom: 4 },
-  subtitle: { color: "#888", fontSize: 14, marginBottom: 48 },
+  toastText: { color: palette.papyrus, fontSize: 13, fontFamily: fonts.mono, letterSpacing: 0.3 },
+
+  // ── Layout sections (Artifact-style vertical rhythm) ──
+  topSection: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: space.lg,
+  },
+  midSection: {
+    alignItems: "center",
+    paddingHorizontal: space.lg,
+  },
+  footer: {
+    flex: 1,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 50,
+  },
+
+  // Brand
+  brandBlock: { alignItems: "center", marginBottom: space.xl - 8 },
+  wordmark: {
+    color: palette.papyrus,
+    fontSize: 28,
+    fontFamily: fonts.monoBold,
+    letterSpacing: 5,
+    marginBottom: space.sm,
+  },
+  tagline: {
+    color: palette.sandstone,
+    fontSize: 18,
+    fontFamily: fonts.serifItalic,
+    fontStyle: "italic",
+  },
+
+  // Actions
   actions: { width: "100%", maxWidth: 320 },
   createBtn: {
-    backgroundColor: "#c96442",
+    backgroundColor: palette.amber,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: radius.button,
     alignItems: "center",
+    ...glow.button,
   },
-  createText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 16 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "#2a2a2a" },
-  dividerText: { color: "#888", fontSize: 11, marginHorizontal: 12 },
-  joinRow: { flexDirection: "row", gap: 8 },
+  createText: {
+    color: palette.papyrus,
+    fontFamily: fonts.monoBold,
+    fontWeight: "700",
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: space.md },
+  dividerLine: { flex: 1, height: 1, backgroundColor: palette.kohl },
+  dividerText: {
+    color: palette.dust,
+    fontSize: 10,
+    fontFamily: fonts.mono,
+    letterSpacing: 1.5,
+    marginHorizontal: 12,
+    textTransform: "uppercase",
+  },
+  joinRow: { flexDirection: "row", gap: space.sm },
+  codeCard: { flex: 1 },
   codeInput: {
-    flex: 1,
-    backgroundColor: "#161616",
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: space.md,
     paddingVertical: 14,
-    color: "#fff",
+    color: palette.papyrus,
     textAlign: "center",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontFamily: fonts.mono,
     letterSpacing: 4,
     fontSize: 14,
   },
   joinBtn: {
-    backgroundColor: "#222",
-    paddingHorizontal: 24,
-    borderRadius: 14,
+    backgroundColor: palette.groove,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.button,
     justifyContent: "center",
+    ...glow.subtle,
   },
-  joinText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  joinText: {
+    color: palette.papyrus,
+    fontFamily: fonts.monoBold,
+    fontWeight: "700",
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+
+  // Footer — signed-in bar
+  footerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatar: { width: 20, height: 20, borderRadius: 10, marginRight: 8 },
+  footerName: { color: palette.dust, fontSize: 12, fontFamily: fonts.mono },
+  footerDot: { color: palette.dust, fontSize: 12 },
+  footerLink: {
+    color: palette.dust,
+    fontSize: 12,
+    fontFamily: fonts.mono,
+    textDecorationLine: "underline",
+  },
 });

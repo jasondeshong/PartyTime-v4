@@ -87,6 +87,7 @@ Do NOT create a new branch unless Jay explicitly asks for one. Work directly on 
 
 ## What's Not Built Yet
 
+- **B2B on mobile** — venue management and analytics dashboard currently live in the web client only. Product direction: these belong in the mobile app so venue owners can manage from an iPad behind the bar, not a laptop. The web versions can stay as fallback or get removed entirely.
 - Email verification for venue ownership (anyone can create a venue right now)
 - Venue owner auth (dashboard is publicly accessible by slug)
 - Mobile deep link support for venue URLs (partytime://mollys-pub)

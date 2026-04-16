@@ -54,7 +54,7 @@ function withSpotifyAppRemote(config) {
         const tmpDir = path.join(iosDir, "_spotify_tmp");
         try {
           execSync(
-            `git clone --depth 1 --filter=blob:none --sparse "https://github.com/nicolo-ribaudo/ios-sdk.git" "${tmpDir}"`,
+            `git clone --depth 1 --filter=blob:none --sparse "https://github.com/spotify/ios-sdk.git" "${tmpDir}"`,
             { stdio: "pipe" }
           );
           execSync("git sparse-checkout set SpotifyiOS.xcframework", {
@@ -95,7 +95,7 @@ function withSpotifyAppRemote(config) {
         if (!fs.existsSync(libsDir)) fs.mkdirSync(libsDir, { recursive: true });
         try {
           execSync(
-            `curl -L -o "${aarPath}" "https://github.com/nicolo-ribaudo/android-sdk/releases/download/v0.8.0-appremote_v2.1.0-auth/spotify-app-remote-release-0.8.0.aar"`,
+            `curl -L -o "${aarPath}" "https://github.com/spotify/android-sdk/releases/download/v0.8.0-appremote_v2.1.0-auth/spotify-app-remote-release-0.8.0.aar"`,
             { stdio: "pipe" }
           );
           console.log("[SpotifyAppRemote] Spotify Android AAR ready.");

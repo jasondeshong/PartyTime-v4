@@ -16,11 +16,38 @@ public class SpotifyAppRemoteModule: Module, SPTAppRemoteDelegate, SPTAppRemoteP
 
     AsyncFunction("connect") { (accessToken: String, promise: Promise) in
       let config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
-      self.appRemote = SPTAppRemote(configuration: config, logLevel: .none)
+      self.appRemote = SPTAppRemote(configuration: config, logLevel: .debug)
       self.appRemote?.connectionParameters.accessToken = accessToken
       self.appRemote?.delegate = self
       self.connectPromise = promise
       self.appRemote?.connect()
+    }
+
+    AsyncFunction("authorize") { (uri: String, promise: Promise) in
+      guard let appRemote = self.appRemote else {
+        promise.reject("NOT_INITIALIZED", "Call connect first to initialize App Remote")
+        return
+      }
+      self.connectPromise = promise
+      appRemote.authorizeAndPlayURI(uri.isEmpty ? "" : uri)
+    }
+
+    AsyncFunction("handleAuthURL") { (urlString: String, promise: Promise) in
+      guard let url = URL(string: urlString),
+            let appRemote = self.appRemote else {
+        promise.resolve(false)
+        return
+      }
+      let params = appRemote.authorizationParameters(from: url)
+      if let token = params?[SPTAppRemoteAccessTokenKey] as? String {
+        appRemote.connectionParameters.accessToken = token
+        self.connectPromise = promise
+        appRemote.connect()
+      } else if let errorDesc = params?[SPTAppRemoteErrorDescriptionKey] as? String {
+        promise.reject("AUTH_ERROR", errorDesc)
+      } else {
+        promise.resolve(false)
+      }
     }
 
     AsyncFunction("disconnect") { (promise: Promise) in

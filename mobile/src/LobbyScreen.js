@@ -121,22 +121,16 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           await subscribeAfterConnect();
         } catch (e) {
           if (cancelled) return;
-          const errCode = e?.code || "";
-          if (errCode === "CONNECT_TIMEOUT" || errCode === "CONNECTION_FAILED") {
-            // Authorize bootstrap — brief app switch to Spotify.
-            // If already authorized, Spotify redirects back near-instantly.
-            showToast("Connecting to Spotify…");
-            try {
-              await SpotifyRemote.authorize("");
-              // Connection completes when Spotify redirects back
-              // via Linking listener → handleAuthURL → connect.
-            } catch (e2) {
-              const msg = e2?.message || e2?.code || String(e2);
-              showToast(`Spotify auth failed: ${msg}`.slice(0, 180));
-            }
-          } else {
-            const msg = e?.message || e?.code || String(e);
-            showToast(`Spotify connect failed: ${msg}`.slice(0, 180));
+          // First connect failed — user may not have authorized App Remote yet.
+          // authorizeAndPlayURI opens Spotify briefly for a one-time grant,
+          // then redirects back. After that, connect() works invisibly.
+          showToast("Connecting to Spotify…");
+          try {
+            await SpotifyRemote.authorize("");
+          } catch (e2) {
+            const msg = e2?.message || e2?.code || String(e2);
+            console.log(`[SpotifyRemote] authorize failed: ${msg}`);
+            showToast(`Spotify auth failed: ${msg}`.slice(0, 180));
           }
         }
       } catch (e) {
@@ -154,15 +148,12 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       }
     });
 
-    // Forward incoming deep links to the native module so it can complete
-    // the App Remote auth handshake when Spotify redirects back.
+    // When Spotify redirects back after authorize(), extract the
+    // App Remote token from the URL and complete the connection.
     linkSub = Linking.addEventListener("url", ({ url }) => {
       if (!url) return;
-      SpotifyRemote.handleAuthURL(url).catch(() => {
-        // Not a Spotify URL or already handled — safe to ignore
-      });
+      SpotifyRemote.handleAuthURL(url).catch(() => {});
     });
-    // Also check if app was launched from an auth URL
     Linking.getInitialURL().then((url) => {
       if (url) SpotifyRemote.handleAuthURL(url).catch(() => {});
     });

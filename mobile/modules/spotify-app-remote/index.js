@@ -11,4 +11,6 @@ export {
   unsubscribeFromPlayerState,
   addPlayerStateListener,
   addConnectionListener,
+  authorize,
+  handleAuthURL,
 } from "./src/SpotifyAppRemote";

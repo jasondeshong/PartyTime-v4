@@ -26,7 +26,7 @@ class SpotifyAppRemoteModule : Module() {
 
       val params = ConnectionParams.Builder(CLIENT_ID)
         .setRedirectUri(REDIRECT_URI)
-        .showAuthView(false)
+        .showAuthView(true)
         .build()
 
       SpotifyAppRemote.connect(activity, params, object : Connector.ConnectionListener {

@@ -50,3 +50,11 @@ export function addPlayerStateListener(callback) {
 export function addConnectionListener(callback) {
   return emitter.addListener("onConnectionChanged", callback);
 }
+
+export function authorize(uri = "") {
+  return NativeModule.authorize(uri);
+}
+
+export function handleAuthURL(url) {
+  return NativeModule.handleAuthURL(url);
+}

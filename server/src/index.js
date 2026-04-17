@@ -444,9 +444,9 @@ app.post("/api/lobbies", async (_req, res) => {
 // Create venue with permanent lobby
 app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
   const { name, slug, settings } = req.body;
-  const ownerEmail = req.userEmail;
-  if (!ownerEmail) {
-    return res.status(400).json({ error: "Could not determine your email from Spotify — check account settings" });
+  const ownerId = req.userId;
+  if (!ownerId) {
+    return res.status(400).json({ error: "Could not determine your Spotify ID" });
   }
   if (!name || !slug) {
     return res.status(400).json({ error: "Missing name or slug" });
@@ -484,7 +484,7 @@ app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
     .insert({
       name,
       slug,
-      owner_email: ownerEmail,
+      owner_spotify_id: ownerId,
       lobby_code: code,
       settings: settings || {},
     })
@@ -492,7 +492,7 @@ app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
     .single();
 
   if (error) {
-    console.error("Venue creation error:", error, "ownerEmail:", ownerEmail);
+    console.error("Venue creation error:", error, "ownerId:", ownerId);
     return res.status(500).json({ error: `Venue insert failed: ${error.message || error.code}` });
   }
 
@@ -514,7 +514,7 @@ app.get("/api/venues/by-owner", requireSpotifyAuth, async (req, res) => {
   const { data: venues, error } = await supabase
     .from("venues")
     .select("*")
-    .eq("owner_email", req.userEmail)
+    .eq("owner_spotify_id", req.userId)
     .order("created_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: "Failed to fetch venues" });
@@ -557,11 +557,11 @@ app.get("/api/venues/:slug", async (req, res) => {
 app.put("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
   const { data: existing } = await supabase
     .from("venues")
-    .select("owner_email")
+    .select("owner_spotify_id")
     .eq("id", req.params.id)
     .single();
   if (!existing) return res.status(404).json({ error: "Venue not found" });
-  if (existing.owner_email !== req.userEmail) {
+  if (existing.owner_spotify_id !== req.userId) {
     return res.status(403).json({ error: "Not your venue" });
   }
 
@@ -598,11 +598,11 @@ app.put("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
 app.delete("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
   const { data: venue } = await supabase
     .from("venues")
-    .select("lobby_code, owner_email")
+    .select("lobby_code, owner_spotify_id")
     .eq("id", req.params.id)
     .single();
   if (!venue) return res.status(404).json({ error: "Venue not found" });
-  if (venue.owner_email !== req.userEmail) {
+  if (venue.owner_spotify_id !== req.userId) {
     return res.status(403).json({ error: "Not your venue" });
   }
 
@@ -628,11 +628,11 @@ app.delete("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
 async function requireVenueOwner(req, res, next) {
   const { data: venue } = await supabase
     .from("venues")
-    .select("owner_email")
+    .select("owner_spotify_id")
     .eq("id", req.params.id)
     .single();
   if (!venue) return res.status(404).json({ error: "Venue not found" });
-  if (venue.owner_email !== req.userEmail) {
+  if (venue.owner_spotify_id !== req.userId) {
     return res.status(403).json({ error: "Not your venue" });
   }
   next();

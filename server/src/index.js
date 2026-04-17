@@ -1283,8 +1283,7 @@ io.on("connection", (socket) => {
     socket.emit("lobby-state", lobby);
     io.to(code).emit("users-updated", usersWithHost);
 
-    // Analytics: user joined
-    const venueId = await getVenueIdForLobby(code);
+    // Analytics: user joined (venueId already resolved above for active check)
     trackEvent(venueId, code, "user_joined", { userName: name, userCount: users.length });
   });
 

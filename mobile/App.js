@@ -219,6 +219,18 @@ export default function App() {
           getToken={getToken}
           onBack={() => setShowVenues(false)}
           onViewAnalytics={(venue) => { setShowVenues(false); setAnalyticsVenue(venue); }}
+          onHostLobby={(lobbyCode) => {
+            setShowVenues(false);
+            if (!socket.connected) socket.connect();
+            socket.emit("join-lobby", { code: lobbyCode, name: user.name });
+            socket.once("error", (msg) => {
+              console.warn("Venue host join error:", msg);
+              socket.disconnect();
+            });
+            socket.once("lobby-state", (lobbyState) => {
+              handleJoinLobby({ code: lobbyCode, isHost: true, initialState: lobbyState });
+            });
+          }}
         />
       </>
     );

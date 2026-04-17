@@ -8,7 +8,7 @@ import { GlassCard, ExposedGrid } from "./Glass";
 import { ShenRing } from "./Symbols";
 import api from "./api";
 
-export default function VenueScreen({ user, getToken, onBack, onViewAnalytics }) {
+export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, onHostLobby }) {
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -148,6 +148,9 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics })
               : v
           )
         );
+        if (action === "start" && data.lobbyCode && onHostLobby) {
+          onHostLobby(data.lobbyCode);
+        }
       }
     } catch {}
     setLoading(false);

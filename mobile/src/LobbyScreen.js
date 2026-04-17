@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
-  StyleSheet, Clipboard, Dimensions, Linking, AppState, Platform, Animated,
+  StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
   KeyboardAvoidingView,
 } from "react-native";
 import * as SpotifyRemote from "expo-spotify-app-remote";
@@ -81,7 +81,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
     let playerSub;
     let connSub;
-    let linkSub;
     let cancelled = false;
 
     async function subscribeAfterConnect() {
@@ -124,22 +123,23 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         } catch (e) {
           if (cancelled) return;
           console.log("[SR] connect() failed:", e?.code, e?.message);
-          // First connect failed — need App Remote authorization.
-          // authorize() opens Spotify briefly; the AppDelegate catches
-          // the redirect and calls connect() immediately at native level.
+          // Connect failed — need App Remote authorization.
+          // authorize() opens Spotify briefly. The native AppDelegate
+          // catches the redirect URL and calls connect() immediately
+          // on the SAME SPTAppRemote instance within the IPC window.
+          // The authorize promise resolves when the delegate fires
+          // appRemoteDidEstablishConnection.
           try {
             console.log("[SR] calling authorize()...");
             await SpotifyRemote.authorize("");
-            console.log("[SR] authorize() resolved — connected!");
             if (cancelled) return;
+            console.log("[SR] authorize() resolved — connected!");
             setRemoteConnected(true);
             await subscribeAfterConnect();
           } catch (e2) {
             const msg = e2?.message || e2?.code || String(e2);
             console.log("[SR] authorize() failed:", msg);
-            // Last resort: maybe Spotify needs to be playing something.
-            // Try authorize with a blank URI one more time after a short delay.
-            showToast("Opening Spotify…");
+            showToast(`Spotify connect failed: ${msg}`.slice(0, 180));
           }
         }
       } catch (e) {
@@ -159,36 +159,12 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       }
     });
 
-    async function handleSpotifyRedirect(url) {
-      if (!url) return;
-      const match = url.match(/access_token=([^&]+)/);
-      if (!match) return;
-      const token = decodeURIComponent(match[1]);
-      console.log("[SR] extracted App Remote token from redirect, length:", token.length);
-      try {
-        await SpotifyRemote.connect(token);
-        console.log("[SR] connect with App Remote token succeeded!");
-        setRemoteConnected(true);
-        await subscribeAfterConnect();
-      } catch (e) {
-        console.log("[SR] connect with App Remote token failed:", e?.code, e?.message);
-      }
-    }
-    linkSub = Linking.addEventListener("url", ({ url }) => {
-      console.log("[SR] Linking URL received:", url);
-      handleSpotifyRedirect(url);
-    });
-    Linking.getInitialURL().then((url) => {
-      if (url) handleSpotifyRedirect(url);
-    });
-
     connectRemote();
 
     return () => {
       cancelled = true;
       playerSub?.remove();
       connSub?.remove();
-      linkSub?.remove();
       SpotifyRemote.unsubscribeFromPlayerState().catch(() => {});
       SpotifyRemote.disconnect().catch(() => {});
     };

@@ -4,46 +4,75 @@ import SpotifyiOS
 fileprivate let CLIENT_ID = "18f1b52ab93b4c6480b1599b64d9be5b"
 fileprivate let REDIRECT_URI = "partytime://callback"
 
-// Singleton so the AppDelegate subscriber can access the same instance
 final class SpotifyRemoteManager: NSObject, SPTAppRemoteDelegate, SPTAppRemotePlayerStateDelegate {
   static let shared = SpotifyRemoteManager()
 
-  var appRemote: SPTAppRemote?
-  var config: SPTConfiguration?
+  private(set) var appRemote: SPTAppRemote?
+  private var config: SPTConfiguration?
   var connectPromise: Promise?
   var isSubscribed = false
+  var appRemoteToken: String?
 
-  // Event forwarding — set by the Module
   var onConnectionChanged: (([String: Any]) -> Void)?
   var onPlayerStateChanged: (([String: Any]) -> Void)?
 
   private override init() { super.init() }
 
-  func createAndConnect(accessToken: String) {
-    if let old = appRemote { old.disconnect() }
-    config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
-    config!.playURI = ""
-    appRemote = SPTAppRemote(configuration: config!, logLevel: .debug)
-    appRemote!.delegate = self
+  func setupIfNeeded(accessToken: String) {
+    if config == nil {
+      config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
+      config!.playURI = ""
+    }
+    if appRemote == nil {
+      appRemote = SPTAppRemote(configuration: config!, logLevel: .debug)
+      appRemote!.delegate = self
+    }
     appRemote!.connectionParameters.accessToken = accessToken
-    appRemote!.connect()
   }
 
-  // Called immediately from AppDelegate when Spotify redirects back
+  func connectOnMainThread() {
+    DispatchQueue.main.async { [weak self] in
+      self?.appRemote?.connect()
+    }
+  }
+
+  func disconnectCleanly() {
+    appRemote?.delegate = nil
+    appRemote?.disconnect()
+    appRemote = nil
+    config = nil
+    isSubscribed = false
+  }
+
+  // Called from AppDelegate — runs synchronously on main thread within
+  // the iOS URL handler, which is the only window where SPTAppRemote
+  // IPC can complete the authorization handshake.
   func handleOpenURL(_ url: URL) -> Bool {
     guard let appRemote = appRemote else { return false }
+
     let params = appRemote.authorizationParameters(from: url)
+
     if let token = params?[SPTAppRemoteAccessTokenKey] as? String {
-      // Fresh instance — the old one has stale IPC state from the failed connect
-      createAndConnect(accessToken: token)
+      NSLog("[SpotifyRemote] App Remote token extracted (%d chars)", token.count)
+      appRemoteToken = token
+      // Set token on the SAME instance and connect immediately
+      appRemote.connectionParameters.accessToken = token
+      appRemote.connect()
+      return true
+    } else if let errorDesc = params?[SPTAppRemoteErrorDescriptionKey] as? String {
+      NSLog("[SpotifyRemote] Auth error from Spotify: %@", errorDesc)
+      connectPromise?.reject("AUTH_ERROR", errorDesc)
+      connectPromise = nil
       return true
     }
+
     return false
   }
 
   // MARK: - SPTAppRemoteDelegate
 
   func appRemoteDidEstablishConnection(_ appRemote: SPTAppRemote) {
+    NSLog("[SpotifyRemote] Connection established!")
     connectPromise?.resolve(nil)
     connectPromise = nil
     onConnectionChanged?(["connected": true])
@@ -51,12 +80,14 @@ final class SpotifyRemoteManager: NSObject, SPTAppRemoteDelegate, SPTAppRemotePl
 
   func appRemote(_ appRemote: SPTAppRemote, didFailConnectionAttemptWithError error: Error?) {
     let msg = error?.localizedDescription ?? "Connection failed"
+    NSLog("[SpotifyRemote] Connection failed: %@", msg)
     connectPromise?.reject("CONNECTION_FAILED", msg)
     connectPromise = nil
     onConnectionChanged?(["connected": false, "error": msg])
   }
 
   func appRemote(_ appRemote: SPTAppRemote, didDisconnectWithError error: Error?) {
+    NSLog("[SpotifyRemote] Disconnected: %@", error?.localizedDescription ?? "no error")
     onConnectionChanged?(["connected": false, "error": error?.localizedDescription ?? ""])
   }
 
@@ -79,17 +110,12 @@ final class SpotifyRemoteManager: NSObject, SPTAppRemoteDelegate, SPTAppRemotePl
   }
 }
 
-// AppDelegate subscriber — handles Spotify redirect URLs immediately
-// at the native level before JS even sees them. This is critical because
-// SPTAppRemote's IPC window closes if connect() isn't called synchronously
-// from the URL handler.
 public class SpotifyAppDelegateSubscriber: ExpoAppDelegateSubscriber {
   public func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
     return SpotifyRemoteManager.shared.handleOpenURL(url)
   }
 }
 
-// Expo Module — thin wrapper that delegates to the singleton
 public class SpotifyAppRemoteModule: Module {
   private let manager = SpotifyRemoteManager.shared
 
@@ -118,12 +144,21 @@ public class SpotifyAppRemoteModule: Module {
         return
       }
 
-      self.manager.connectPromise = promise
-      self.manager.createAndConnect(accessToken: accessToken)
+      // Cancel any in-progress attempt
+      if let old = self.manager.connectPromise {
+        self.manager.connectPromise = nil
+        old.reject("CANCELLED", "Superseded by new connect attempt")
+      }
 
+      self.manager.setupIfNeeded(accessToken: accessToken)
+      self.manager.connectPromise = promise
+      self.manager.connectOnMainThread()
+
+      // Timeout — also disconnect to avoid stale IPC
       DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
         if let p = self.manager.connectPromise {
           self.manager.connectPromise = nil
+          self.manager.appRemote?.disconnect()
           p.reject("CONNECT_TIMEOUT", "Spotify connect timed out — is Spotify open?")
         }
       }
@@ -134,8 +169,19 @@ public class SpotifyAppRemoteModule: Module {
         promise.reject("NOT_INITIALIZED", "Call connect first")
         return
       }
+
+      // Cancel any in-progress attempt
+      if let old = self.manager.connectPromise {
+        self.manager.connectPromise = nil
+        old.reject("CANCELLED", "Superseded by authorize")
+      }
+
+      // authorize resolves when the AppDelegate catches the redirect
+      // and handleOpenURL() → connect() → delegate fires
       self.manager.connectPromise = promise
-      appRemote.authorizeAndPlayURI(uri.isEmpty ? "" : uri)
+      DispatchQueue.main.async {
+        appRemote.authorizeAndPlayURI(uri.isEmpty ? "" : uri)
+      }
     }
 
     AsyncFunction("handleAuthURL") { (urlString: String, promise: Promise) in
@@ -144,18 +190,11 @@ public class SpotifyAppRemoteModule: Module {
         return
       }
       let handled = self.manager.handleOpenURL(url)
-      if handled {
-        self.manager.connectPromise = promise
-      } else {
-        promise.resolve(false)
-      }
+      promise.resolve(handled)
     }
 
     AsyncFunction("disconnect") { (promise: Promise) in
-      self.manager.appRemote?.disconnect()
-      self.manager.appRemote = nil
-      self.manager.config = nil
-      self.manager.isSubscribed = false
+      self.manager.disconnectCleanly()
       promise.resolve(nil)
     }
 

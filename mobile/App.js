@@ -8,6 +8,8 @@ import useAuth from "./src/useAuth";
 import LoginScreen from "./src/LoginScreen";
 import HomeScreen from "./src/HomeScreen";
 import SettingsScreen from "./src/SettingsScreen";
+import VenueScreen from "./src/VenueScreen";
+import AnalyticsDashboard from "./src/AnalyticsDashboard";
 import LobbyScreen from "./src/LobbyScreen";
 import LogoReview from "./src/LogoReview";
 import socket from "./src/socket";
@@ -28,6 +30,8 @@ export default function App() {
   const [lobby, setLobby] = useState(null);
   const [guestUser, setGuestUser] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showVenues, setShowVenues] = useState(false);
+  const [analyticsVenue, setAnalyticsVenue] = useState(null);
   const [restoring, setRestoring] = useState(true);
   const restoredRef = useRef(false);
 
@@ -191,6 +195,33 @@ export default function App() {
     );
   }
 
+  // Analytics dashboard for a specific venue
+  if (analyticsVenue) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor="#080808" />
+        <AnalyticsDashboard
+          venue={analyticsVenue}
+          onBack={() => setAnalyticsVenue(null)}
+        />
+      </>
+    );
+  }
+
+  // Venue management
+  if (showVenues) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor="#080808" />
+        <VenueScreen
+          user={user}
+          onBack={() => setShowVenues(false)}
+          onViewAnalytics={(venue) => { setShowVenues(false); setAnalyticsVenue(venue); }}
+        />
+      </>
+    );
+  }
+
   // Logged in host — settings or home screen
   if (showSettings) {
     return (
@@ -200,6 +231,7 @@ export default function App() {
           user={user}
           onBack={() => setShowSettings(false)}
           onLogout={() => { setShowSettings(false); logout(); }}
+          onOpenVenues={() => { setShowSettings(false); setShowVenues(true); }}
         />
       </>
     );

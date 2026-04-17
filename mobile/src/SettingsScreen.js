@@ -17,7 +17,7 @@ import { GlassCard, ExposedGrid } from "./Glass";
  */
 const GUEST_NAME_KEY = "pt_guest_name";
 
-export default function SettingsScreen({ user, onBack, onLogout }) {
+export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues }) {
   const [guestName, setGuestName] = useState("");
   const [editingName, setEditingName] = useState(false);
 
@@ -149,6 +149,18 @@ export default function SettingsScreen({ user, onBack, onLogout }) {
               </View>
             )}
             <View style={s.divider} />
+            {onOpenVenues && (
+              <>
+                <TouchableOpacity style={s.prefRow} onPress={onOpenVenues} activeOpacity={0.7}>
+                  <View style={s.prefInfo}>
+                    <Text style={s.prefLabel}>Venue Management</Text>
+                    <Text style={s.prefDesc}>Create and manage B2B venues</Text>
+                  </View>
+                  <Text style={s.prefChevron}>{"\u203A"}</Text>
+                </TouchableOpacity>
+                <View style={s.divider} />
+              </>
+            )}
             <View style={s.prefRow}>
               <View style={s.prefInfo}>
                 <Text style={s.prefLabel}>Notifications</Text>

@@ -486,6 +486,31 @@ app.post("/api/venues", async (req, res) => {
   });
 });
 
+// List venues by owner email
+app.get("/api/venues/by-owner", async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: "Missing email" });
+
+  const { data: venues, error } = await supabase
+    .from("venues")
+    .select("*")
+    .eq("owner_email", email)
+    .order("created_at", { ascending: false });
+
+  if (error) return res.status(500).json({ error: "Failed to fetch venues" });
+
+  res.json(
+    (venues || []).map((v) => ({
+      id: v.id,
+      name: v.name,
+      slug: v.slug,
+      lobbyCode: v.lobby_code,
+      settings: v.settings,
+      createdAt: v.created_at,
+    }))
+  );
+});
+
 // Resolve venue by slug
 app.get("/api/venues/:slug", async (req, res) => {
   const { data: venue, error } = await supabase

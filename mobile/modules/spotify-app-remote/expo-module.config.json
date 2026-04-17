@@ -1,7 +1,8 @@
 {
   "platforms": ["apple", "android"],
   "apple": {
-    "modules": ["SpotifyAppRemoteModule"]
+    "modules": ["SpotifyAppRemoteModule"],
+    "appDelegateSubscribers": ["SpotifyAppDelegateSubscriber"]
   },
   "android": {
     "modules": ["expo.modules.spotifyappremote.SpotifyAppRemoteModule"]

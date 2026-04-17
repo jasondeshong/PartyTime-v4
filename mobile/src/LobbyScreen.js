@@ -20,6 +20,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [users, setUsers] = useState(initialState?.users || []);
   const [nowPlaying, setNowPlaying] = useState(initialState?.nowPlaying || null);
   const [venueName] = useState(initialState?.venueName || null);
+  const [venueSlug] = useState(initialState?.venueSlug || null);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -220,7 +221,18 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     }
   }
 
-  // Resume if paused, otherwise start fresh
+  async function waitForPlayerReady(retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await SpotifyRemote.getPlayerState();
+        return true;
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    return false;
+  }
+
   async function handlePlay() {
     if (!getToken || !nowPlaying?.spotifyId) return;
     const uri = `spotify:track:${nowPlaying.spotifyId}`;
@@ -232,9 +244,18 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       }
       setIsPlaying(true);
     } catch (e1) {
-      const msg = e1?.message || e1?.code || String(e1);
-      console.log("[SR] play failed:", msg);
-      showToast(`Playback failed: ${msg}`.slice(0, 180));
+      console.log("[SR] play attempt 1 failed, waiting for player ready...");
+      const ready = await waitForPlayerReady();
+      if (ready) {
+        try {
+          await SpotifyRemote.play(uri);
+          setIsPlaying(true);
+          return;
+        } catch (e2) {
+          console.log("[SR] play attempt 2 failed:", e2?.message);
+        }
+      }
+      showToast("Tap play to start — Spotify is warming up");
     }
   }
 
@@ -251,7 +272,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   // Auto-play when now playing changes — waits for remote to be connected
   useEffect(() => {
     if (!isHost || !nowPlaying?.spotifyId || !getToken || !remoteConnected) return;
-    const t = setTimeout(() => handlePlay(), 1000);
+    const t = setTimeout(() => handlePlay(), 2000);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId, remoteConnected]);
 
@@ -380,9 +401,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.emit("skip", code);
   }
 
+  const displayCode = venueSlug || code;
+
   function copyCode() {
-    Clipboard.setString(code);
-    showToast("Code copied!");
+    Clipboard.setString(venueSlug ? `partytime.app/${venueSlug}` : code);
+    showToast(venueSlug ? "Link copied!" : "Code copied!");
   }
 
   function fmt(ms) {
@@ -474,7 +497,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             </View>
             {venueName && <Text style={s.venueSubtitle}>powered by PartyTime</Text>}
             <TouchableOpacity onPress={copyCode}>
-              <Text style={s.codeText}>{code} <Text style={s.codeTap}>tap to copy</Text></Text>
+              <Text style={s.codeText}>{displayCode} <Text style={s.codeTap}>tap to copy</Text></Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity onPress={onLeave}>

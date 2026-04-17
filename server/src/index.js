@@ -1204,19 +1204,24 @@ async function getLobby(code) {
   // Check if this lobby belongs to a venue
   const venueId = await getVenueIdForLobby(code);
   let venueName = null;
+  let venueSlug = null;
   if (venueId) {
     const { data: venue } = await supabase
       .from("venues")
       .select("name, slug")
       .eq("id", venueId)
       .single();
-    if (venue) venueName = venue.name;
+    if (venue) {
+      venueName = venue.name;
+      venueSlug = venue.slug;
+    }
   }
 
   return {
     code: data.code,
     nowPlaying: data.now_playing,
     venueName,
+    venueSlug,
     queue: (songs || []).map((s) => ({
       id: s.id,
       spotifyId: s.spotify_id,

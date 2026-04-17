@@ -114,33 +114,37 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           showToast("Spotify sign-in expired — log in again");
           return;
         }
+        console.log("[SR] connect() starting, token length:", token?.length);
         try {
           await SpotifyRemote.connect(token);
           if (cancelled) return;
+          console.log("[SR] connect() succeeded!");
           setRemoteConnected(true);
           await subscribeAfterConnect();
         } catch (e) {
           if (cancelled) return;
-          // First connect failed — user may not have authorized App Remote yet.
-          // authorizeAndPlayURI opens Spotify briefly for a one-time grant,
-          // then redirects back. After that, connect() works invisibly.
+          console.log("[SR] connect() failed:", e?.code, e?.message);
           showToast("Connecting to Spotify…");
           try {
+            console.log("[SR] calling authorize()...");
             await SpotifyRemote.authorize("");
+            console.log("[SR] authorize() resolved");
           } catch (e2) {
             const msg = e2?.message || e2?.code || String(e2);
-            console.log(`[SpotifyRemote] authorize failed: ${msg}`);
+            console.log("[SR] authorize() failed:", msg);
             showToast(`Spotify auth failed: ${msg}`.slice(0, 180));
           }
         }
       } catch (e) {
         const msg = e?.message || e?.code || String(e);
+        console.log("[SR] connectRemote outer error:", msg);
         showToast(`Spotify init failed: ${msg}`.slice(0, 180));
       }
     }
 
     // Connection state events (fires on connect/disconnect/auth-URL completion)
     connSub = SpotifyRemote.addConnectionListener(async (event) => {
+      console.log("[SR] connectionListener:", JSON.stringify(event));
       if (cancelled) return;
       setRemoteConnected(!!event.connected);
       if (event.connected) {
@@ -148,14 +152,27 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       }
     });
 
-    // When Spotify redirects back after authorize(), extract the
-    // App Remote token from the URL and complete the connection.
-    linkSub = Linking.addEventListener("url", ({ url }) => {
+    async function handleSpotifyRedirect(url) {
       if (!url) return;
-      SpotifyRemote.handleAuthURL(url).catch(() => {});
+      const match = url.match(/access_token=([^&]+)/);
+      if (!match) return;
+      const token = decodeURIComponent(match[1]);
+      console.log("[SR] extracted App Remote token from redirect, length:", token.length);
+      try {
+        await SpotifyRemote.connect(token);
+        console.log("[SR] connect with App Remote token succeeded!");
+        setRemoteConnected(true);
+        await subscribeAfterConnect();
+      } catch (e) {
+        console.log("[SR] connect with App Remote token failed:", e?.code, e?.message);
+      }
+    }
+    linkSub = Linking.addEventListener("url", ({ url }) => {
+      console.log("[SR] Linking URL received:", url);
+      handleSpotifyRedirect(url);
     });
     Linking.getInitialURL().then((url) => {
-      if (url) SpotifyRemote.handleAuthURL(url).catch(() => {});
+      if (url) handleSpotifyRedirect(url);
     });
 
     connectRemote();

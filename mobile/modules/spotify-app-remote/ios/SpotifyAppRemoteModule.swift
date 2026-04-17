@@ -11,16 +11,14 @@ public class SpotifyAppRemoteModule: Module {
   fileprivate var connectPromise: Promise?
   fileprivate var isSubscribed = false
 
-  fileprivate func ensureAppRemote(accessToken: String) {
-    if config == nil {
-      config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
-      config!.playURI = ""
-    }
-    if appRemote == nil {
-      appRemote = SPTAppRemote(configuration: config!, logLevel: .debug)
-      delegateHandler = SpotifyDelegateHandler(module: self)
-      appRemote!.delegate = delegateHandler
-    }
+  fileprivate func createAppRemote(accessToken: String) {
+    // Always destroy previous instance to avoid stale IPC state
+    if let old = appRemote { old.disconnect() }
+    config = SPTConfiguration(clientID: CLIENT_ID, redirectURL: URL(string: REDIRECT_URI)!)
+    config!.playURI = ""
+    appRemote = SPTAppRemote(configuration: config!, logLevel: .debug)
+    delegateHandler = SpotifyDelegateHandler(module: self)
+    appRemote!.delegate = delegateHandler
     appRemote!.connectionParameters.accessToken = accessToken
   }
 
@@ -36,7 +34,7 @@ public class SpotifyAppRemoteModule: Module {
         return
       }
 
-      self.ensureAppRemote(accessToken: accessToken)
+      self.createAppRemote(accessToken: accessToken)
       self.connectPromise = promise
 
       self.appRemote!.connect()

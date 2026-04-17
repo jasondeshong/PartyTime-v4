@@ -79,6 +79,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics })
         }),
       });
       const data = await res.json();
+      console.log("[Venue] create response:", res.status, JSON.stringify(data));
       if (!res.ok) {
         setError(data.error || "Failed to create venue");
       } else {

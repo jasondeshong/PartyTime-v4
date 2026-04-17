@@ -445,6 +445,9 @@ app.post("/api/lobbies", async (_req, res) => {
 app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
   const { name, slug, settings } = req.body;
   const ownerEmail = req.userEmail;
+  if (!ownerEmail) {
+    return res.status(400).json({ error: "Could not determine your email from Spotify — check account settings" });
+  }
   if (!name || !slug) {
     return res.status(400).json({ error: "Missing name or slug" });
   }
@@ -489,8 +492,8 @@ app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
     .single();
 
   if (error) {
-    console.error("Venue creation error:", error);
-    return res.status(500).json({ error: "Failed to create venue" });
+    console.error("Venue creation error:", error, "ownerEmail:", ownerEmail);
+    return res.status(500).json({ error: `Venue insert failed: ${error.message || error.code}` });
   }
 
   // Cache the mapping

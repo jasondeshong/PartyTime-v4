@@ -19,6 +19,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [queue, setQueue] = useState(initialState?.queue || []);
   const [users, setUsers] = useState(initialState?.users || []);
   const [nowPlaying, setNowPlaying] = useState(initialState?.nowPlaying || null);
+  const [venueName] = useState(initialState?.venueName || null);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -224,7 +225,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     if (!getToken || !nowPlaying?.spotifyId) return;
     const uri = `spotify:track:${nowPlaying.spotifyId}`;
     try {
-      // If we were paused mid-track, resume instead of restarting
       if (position > 0 && duration > 0 && position < duration - 1500) {
         await SpotifyRemote.resume();
       } else {
@@ -232,16 +232,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       }
       setIsPlaying(true);
     } catch (e1) {
-      try {
-        const token = await getToken();
-        await SpotifyRemote.connect(token);
-        await SpotifyRemote.play(uri);
-        setIsPlaying(true);
-        setRemoteConnected(true);
-      } catch (e2) {
-        const msg = e2?.message || e2?.code || String(e2);
-        showToast(`Playback failed: ${msg}`.slice(0, 180));
-      }
+      const msg = e1?.message || e1?.code || String(e1);
+      console.log("[SR] play failed:", msg);
+      showToast(`Playback failed: ${msg}`.slice(0, 180));
     }
   }
 
@@ -258,7 +251,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   // Auto-play when now playing changes — waits for remote to be connected
   useEffect(() => {
     if (!isHost || !nowPlaying?.spotifyId || !getToken || !remoteConnected) return;
-    const t = setTimeout(() => handlePlay(), 300);
+    const t = setTimeout(() => handlePlay(), 1000);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId, remoteConnected]);
 
@@ -472,13 +465,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         <View style={s.header}>
           <View>
             <View style={s.titleRow}>
-              <Text style={s.headerTitle}>PARTYTIME</Text>
+              <Text style={s.headerTitle}>{venueName || "PARTYTIME"}</Text>
               {isHost ? (
                 <Text style={s.hostLabel}>HOST</Text>
               ) : (
                 <Text style={s.guestLabel}>GUEST</Text>
               )}
             </View>
+            {venueName && <Text style={s.venueSubtitle}>powered by PartyTime</Text>}
             <TouchableOpacity onPress={copyCode}>
               <Text style={s.codeText}>{code} <Text style={s.codeTap}>tap to copy</Text></Text>
             </TouchableOpacity>
@@ -804,6 +798,7 @@ const s = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.md },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerTitle: { color: palette.papyrus, fontSize: 18, fontFamily: fonts.monoBold, letterSpacing: 1.5 },
+  venueSubtitle: { color: palette.dust, fontSize: 9, fontFamily: fonts.serifItalic, fontStyle: "italic", letterSpacing: 1, marginTop: 1 },
   hostLabel: { color: palette.amber, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   guestLabel: { color: palette.sandstone, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   codeText: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 4, marginTop: space.xs },

@@ -623,6 +623,82 @@ app.delete("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// Start venue lobby — creates a lobby and marks venue active
+app.post("/api/venues/:id/start", requireSpotifyAuth, async (req, res) => {
+  const { data: venue } = await supabase
+    .from("venues")
+    .select("owner_spotify_id, lobby_code, settings, name")
+    .eq("id", req.params.id)
+    .single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  if (venue.owner_spotify_id !== req.userId) {
+    return res.status(403).json({ error: "Not your venue" });
+  }
+
+  let lobbyCode = venue.lobby_code;
+
+  // Create a lobby if one doesn't exist
+  if (!lobbyCode) {
+    lobbyCode = generateCode();
+    const { error: lobbyError } = await supabase
+      .from("lobbies")
+      .insert({ code: lobbyCode, now_playing: null });
+    if (lobbyError) {
+      return res.status(500).json({ error: "Failed to create lobby" });
+    }
+  }
+
+  lobbyUsers.set(lobbyCode, []);
+  playedSongs.set(lobbyCode, new Map());
+
+  const newSettings = { ...(venue.settings || {}), active: true };
+  await supabase
+    .from("venues")
+    .update({ lobby_code: lobbyCode, settings: newSettings })
+    .eq("id", req.params.id);
+
+  lobbyVenueMap.set(lobbyCode, req.params.id);
+
+  res.json({ lobbyCode, active: true });
+});
+
+// Stop venue lobby — deactivates and kicks everyone
+app.post("/api/venues/:id/stop", requireSpotifyAuth, async (req, res) => {
+  const { data: venue } = await supabase
+    .from("venues")
+    .select("owner_spotify_id, lobby_code, settings")
+    .eq("id", req.params.id)
+    .single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  if (venue.owner_spotify_id !== req.userId) {
+    return res.status(403).json({ error: "Not your venue" });
+  }
+
+  // Notify all clients in the lobby
+  if (venue.lobby_code) {
+    io.to(venue.lobby_code).emit("lobby-closed");
+    // Clean up in-memory state
+    lobbyUsers.delete(venue.lobby_code);
+    lobbyHosts.delete(venue.lobby_code);
+    playedSongs.delete(venue.lobby_code);
+    for (const key of userVotes.keys()) {
+      if (key.startsWith(venue.lobby_code + ":")) userVotes.delete(key);
+    }
+    lobbyVenueMap.delete(venue.lobby_code);
+    // Clean up DB
+    await supabase.from("queue").delete().eq("lobby_code", venue.lobby_code);
+    await supabase.from("lobbies").delete().eq("code", venue.lobby_code);
+  }
+
+  const newSettings = { ...(venue.settings || {}), active: false };
+  await supabase
+    .from("venues")
+    .update({ lobby_code: null, settings: newSettings })
+    .eq("id", req.params.id);
+
+  res.json({ active: false });
+});
+
 // --- Analytics query endpoints (B2B) ---
 
 async function requireVenueOwner(req, res, next) {
@@ -866,9 +942,22 @@ async function getLobby(code) {
     .eq("lobby_code", code)
     .order("votes", { ascending: false });
 
+  // Check if this lobby belongs to a venue
+  const venueId = await getVenueIdForLobby(code);
+  let venueName = null;
+  if (venueId) {
+    const { data: venue } = await supabase
+      .from("venues")
+      .select("name, slug")
+      .eq("id", venueId)
+      .single();
+    if (venue) venueName = venue.name;
+  }
+
   return {
     code: data.code,
     nowPlaying: data.now_playing,
+    venueName,
     queue: (songs || []).map((s) => ({
       id: s.id,
       spotifyId: s.spotify_id,
@@ -895,6 +984,20 @@ io.on("connection", (socket) => {
     if (!lobby) {
       socket.emit("error", "Lobby not found");
       return;
+    }
+
+    // Check if this is a venue lobby that's inactive
+    const venueId = await getVenueIdForLobby(code);
+    if (venueId) {
+      const { data: venue } = await supabase
+        .from("venues")
+        .select("settings")
+        .eq("id", venueId)
+        .single();
+      if (venue && venue.settings?.active === false) {
+        socket.emit("error", "This venue's lobby isn't active right now");
+        return;
+      }
     }
     socket.join(code);
     currentLobby = code;

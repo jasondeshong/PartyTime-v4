@@ -129,6 +129,30 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics })
     ]);
   }
 
+  async function toggleVenue(venue) {
+    const isActive = venue.settings?.active;
+    const action = isActive ? "stop" : "start";
+    setLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await api(`/api/venues/${venue.id}/${action}`, {
+        method: "POST",
+        headers,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setVenues((prev) =>
+          prev.map((v) =>
+            v.id === venue.id
+              ? { ...v, lobbyCode: data.lobbyCode || null, settings: { ...v.settings, active: data.active } }
+              : v
+          )
+        );
+      }
+    } catch {}
+    setLoading(false);
+  }
+
   function autoSlug(text) {
     setName(text);
     if (!editingVenue) {
@@ -230,9 +254,29 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics })
                   </View>
                 ) : (
                   <View>
-                    <Text style={s.venueName}>{venue.name}</Text>
-                    <Text style={s.venueSlug}>/{venue.slug}</Text>
-                    <Text style={s.venueCode}>Lobby: {venue.lobbyCode}</Text>
+                    <View style={s.venueHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.venueName}>{venue.name}</Text>
+                        <Text style={s.venueSlug}>/{venue.slug}</Text>
+                      </View>
+                      <View style={[s.statusBadge, venue.settings?.active ? s.statusActive : s.statusInactive]}>
+                        <Text style={[s.statusText, venue.settings?.active ? s.statusTextActive : s.statusTextInactive]}>
+                          {venue.settings?.active ? "LIVE" : "OFF"}
+                        </Text>
+                      </View>
+                    </View>
+                    {venue.lobbyCode && venue.settings?.active ? (
+                      <Text style={s.venueCode}>Lobby: {venue.lobbyCode}</Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[s.toggleBtn, venue.settings?.active ? s.stopBtn : s.startBtn]}
+                      onPress={() => toggleVenue(venue)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[s.toggleBtnText, venue.settings?.active ? s.stopBtnText : s.startBtnText]}>
+                        {venue.settings?.active ? "Stop Lobby" : "Start Lobby"}
+                      </Text>
+                    </TouchableOpacity>
                     <View style={s.venueActions}>
                       <TouchableOpacity onPress={() => onViewAnalytics(venue)} activeOpacity={0.7}>
                         <Text style={s.actionText}>Analytics</Text>
@@ -299,9 +343,22 @@ const s = StyleSheet.create({
   },
   createBtnText: { color: palette.amber, fontSize: 14, fontFamily: fonts.monoBold, letterSpacing: 1 },
   emptyText: { color: palette.dust, fontSize: 13, fontFamily: fonts.serifItalic, fontStyle: "italic", textAlign: "center", marginTop: space.lg },
+  venueHeader: { flexDirection: "row", alignItems: "flex-start", marginBottom: space.xs },
   venueName: { color: palette.papyrus, fontSize: 17, fontFamily: fonts.monoBold, marginBottom: 2 },
-  venueSlug: { color: palette.amber, fontSize: 12, fontFamily: fonts.mono, marginBottom: 4 },
+  venueSlug: { color: palette.amber, fontSize: 12, fontFamily: fonts.mono },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusActive: { backgroundColor: "rgba(29,185,84,0.15)", borderWidth: 1, borderColor: "rgba(29,185,84,0.3)" },
+  statusInactive: { backgroundColor: palette.groove, borderWidth: 1, borderColor: palette.glassBorder },
+  statusText: { fontSize: 9, fontFamily: fonts.monoBold, letterSpacing: 2 },
+  statusTextActive: { color: palette.spotifyGreen },
+  statusTextInactive: { color: palette.dust },
   venueCode: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 2, marginBottom: space.sm },
+  toggleBtn: { paddingVertical: 10, borderRadius: radius.button, alignItems: "center", marginVertical: space.sm },
+  startBtn: { backgroundColor: palette.amber },
+  stopBtn: { backgroundColor: "transparent", borderWidth: 1, borderColor: palette.scarabRed },
+  toggleBtnText: { fontSize: 13, fontFamily: fonts.monoBold, letterSpacing: 1 },
+  startBtnText: { color: palette.obsidian },
+  stopBtnText: { color: palette.scarabRed },
   venueActions: { flexDirection: "row", gap: space.lg, marginTop: space.xs },
   actionText: { color: palette.amber, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
   deleteText: { color: palette.scarabRed, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },

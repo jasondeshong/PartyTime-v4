@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "./api";
 
-export default function VenueDashboard({ venueId, venueName, onBack }) {
+export default function VenueDashboard({ venueId, venueName, getToken, onBack }) {
   const [overview, setOverview] = useState(null);
   const [peakHours, setPeakHours] = useState(null);
   const [participation, setParticipation] = useState(null);
@@ -16,6 +16,8 @@ export default function VenueDashboard({ venueId, venueName, onBack }) {
     async function fetchAll() {
       setLoading(true);
       try {
+        const token = getToken ? await getToken() : null;
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const endpoints = [
           "overview",
           "peak-hours",
@@ -26,7 +28,7 @@ export default function VenueDashboard({ venueId, venueName, onBack }) {
         ];
         const [o, p, pa, t, g, s] = await Promise.all(
           endpoints.map((e) =>
-            api(`/api/venues/${venueId}/analytics/${e}`).then((r) => r.json())
+            api(`/api/venues/${venueId}/analytics/${e}`, { headers }).then((r) => r.json())
           )
         );
         if (cancelled) return;

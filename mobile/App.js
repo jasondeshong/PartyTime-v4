@@ -202,6 +202,7 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
         <AnalyticsDashboard
           venue={analyticsVenue}
+          getToken={getToken}
           onBack={() => setAnalyticsVenue(null)}
         />
       </>
@@ -215,6 +216,7 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
         <VenueScreen
           user={user}
+          getToken={getToken}
           onBack={() => setShowVenues(false)}
           onViewAnalytics={(venue) => { setShowVenues(false); setAnalyticsVenue(venue); }}
         />

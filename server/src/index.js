@@ -155,6 +155,25 @@ const SPOTIFY_SCOPES = [
   "playlist-read-collaborative",
 ].join(" ");
 
+// --- Auth middleware: verify Spotify token and attach user email ---
+async function requireSpotifyAuth(req, res, next) {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Missing authorization token" });
+
+  try {
+    const profileRes = await fetch("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!profileRes.ok) return res.status(401).json({ error: "Invalid token" });
+    const profile = await profileRes.json();
+    req.userEmail = profile.email;
+    req.userId = profile.id;
+    next();
+  } catch {
+    res.status(401).json({ error: "Token verification failed" });
+  }
+}
+
 // --- REST routes ---
 
 app.get("/api/health", (_req, res) => {
@@ -423,10 +442,11 @@ app.post("/api/lobbies", async (_req, res) => {
 // --- Venue CRUD (B2B) ---
 
 // Create venue with permanent lobby
-app.post("/api/venues", async (req, res) => {
-  const { name, slug, ownerEmail, settings } = req.body;
-  if (!name || !slug || !ownerEmail) {
-    return res.status(400).json({ error: "Missing name, slug, or ownerEmail" });
+app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
+  const { name, slug, settings } = req.body;
+  const ownerEmail = req.userEmail;
+  if (!name || !slug) {
+    return res.status(400).json({ error: "Missing name or slug" });
   }
 
   // Validate slug format: lowercase alphanumeric + hyphens
@@ -486,15 +506,12 @@ app.post("/api/venues", async (req, res) => {
   });
 });
 
-// List venues by owner email
-app.get("/api/venues/by-owner", async (req, res) => {
-  const { email } = req.query;
-  if (!email) return res.status(400).json({ error: "Missing email" });
-
+// List venues owned by the authenticated user
+app.get("/api/venues/by-owner", requireSpotifyAuth, async (req, res) => {
   const { data: venues, error } = await supabase
     .from("venues")
     .select("*")
-    .eq("owner_email", email)
+    .eq("owner_email", req.userEmail)
     .order("created_at", { ascending: false });
 
   if (error) return res.status(500).json({ error: "Failed to fetch venues" });
@@ -534,7 +551,17 @@ app.get("/api/venues/:slug", async (req, res) => {
 });
 
 // Update venue settings
-app.put("/api/venues/:id", async (req, res) => {
+app.put("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
+  const { data: existing } = await supabase
+    .from("venues")
+    .select("owner_email")
+    .eq("id", req.params.id)
+    .single();
+  if (!existing) return res.status(404).json({ error: "Venue not found" });
+  if (existing.owner_email !== req.userEmail) {
+    return res.status(403).json({ error: "Not your venue" });
+  }
+
   const { name, settings } = req.body;
   const updates = {};
   if (name) updates.name = name;
@@ -552,7 +579,7 @@ app.put("/api/venues/:id", async (req, res) => {
     .single();
 
   if (error || !venue) {
-    return res.status(404).json({ error: "Venue not found or update failed" });
+    return res.status(500).json({ error: "Update failed" });
   }
 
   res.json({
@@ -565,13 +592,16 @@ app.put("/api/venues/:id", async (req, res) => {
 });
 
 // Delete venue
-app.delete("/api/venues/:id", async (req, res) => {
-  // Get venue to find its lobby code
+app.delete("/api/venues/:id", requireSpotifyAuth, async (req, res) => {
   const { data: venue } = await supabase
     .from("venues")
-    .select("lobby_code")
+    .select("lobby_code, owner_email")
     .eq("id", req.params.id)
     .single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  if (venue.owner_email !== req.userEmail) {
+    return res.status(403).json({ error: "Not your venue" });
+  }
 
   const { error } = await supabase
     .from("venues")
@@ -592,8 +622,21 @@ app.delete("/api/venues/:id", async (req, res) => {
 
 // --- Analytics query endpoints (B2B) ---
 
+async function requireVenueOwner(req, res, next) {
+  const { data: venue } = await supabase
+    .from("venues")
+    .select("owner_email")
+    .eq("id", req.params.id)
+    .single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  if (venue.owner_email !== req.userEmail) {
+    return res.status(403).json({ error: "Not your venue" });
+  }
+  next();
+}
+
 // Overview: combined stats
-app.get("/api/venues/:id/analytics/overview", async (req, res) => {
+app.get("/api/venues/:id/analytics/overview", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -633,7 +676,7 @@ app.get("/api/venues/:id/analytics/overview", async (req, res) => {
 });
 
 // Peak hours: activity by hour of day
-app.get("/api/venues/:id/analytics/peak-hours", async (req, res) => {
+app.get("/api/venues/:id/analytics/peak-hours", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -663,7 +706,7 @@ app.get("/api/venues/:id/analytics/peak-hours", async (req, res) => {
 });
 
 // Participation: user join/leave patterns
-app.get("/api/venues/:id/analytics/participation", async (req, res) => {
+app.get("/api/venues/:id/analytics/participation", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -702,7 +745,7 @@ app.get("/api/venues/:id/analytics/participation", async (req, res) => {
 });
 
 // Genre trends: genre breakdown from played songs
-app.get("/api/venues/:id/analytics/genre-trends", async (req, res) => {
+app.get("/api/venues/:id/analytics/genre-trends", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -734,7 +777,7 @@ app.get("/api/venues/:id/analytics/genre-trends", async (req, res) => {
 });
 
 // Songs played count
-app.get("/api/venues/:id/analytics/songs-played", async (req, res) => {
+app.get("/api/venues/:id/analytics/songs-played", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -764,7 +807,7 @@ app.get("/api/venues/:id/analytics/songs-played", async (req, res) => {
 });
 
 // Top songs: most queued/played songs
-app.get("/api/venues/:id/analytics/top-songs", async (req, res) => {
+app.get("/api/venues/:id/analytics/top-songs", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
   const venueId = req.params.id;
   const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1044,13 +1087,16 @@ io.on("connection", (socket) => {
   });
 
   socket.on("remove-song", async ({ code, songId }) => {
-    // Host-only: verify this socket's userName matches the lobby's host
     if (lobbyHosts.get(code) !== userName) {
       socket.emit("permission-error", "Only the host can remove songs");
       return;
     }
     await supabase.from("queue").delete().eq("id", songId);
     userVotes.delete(`${code}:${songId}`);
+
+    const venueId = await getVenueIdForLobby(code);
+    trackEvent(venueId, code, "song_removed", { songId, removedBy: userName });
+
     const lobby = await getLobby(code);
     if (lobby) io.to(code).emit("queue-updated", lobby.queue);
   });

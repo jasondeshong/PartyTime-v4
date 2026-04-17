@@ -211,6 +211,7 @@ export default function App() {
       <VenueDashboard
         venueId={venue.id}
         venueName={venue.name}
+        getToken={getToken}
         onBack={() => {
           window.history.pushState({}, "", `/${venue.slug}`);
           setShowDashboard(false);

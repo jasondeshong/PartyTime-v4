@@ -8,7 +8,7 @@ import { GlassCard, ExposedGrid } from "./Glass";
 import { ShenRing } from "./Symbols";
 import api from "./api";
 
-export default function VenueScreen({ user, onBack, onViewAnalytics }) {
+export default function VenueScreen({ user, getToken, onBack, onViewAnalytics }) {
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -40,10 +40,16 @@ export default function VenueScreen({ user, onBack, onViewAnalytics }) {
     loadVenues();
   }, []);
 
+  async function authHeaders() {
+    const token = getToken ? await getToken() : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   async function loadVenues() {
     setLoading(true);
     try {
-      const res = await api(`/api/venues/by-owner?email=${encodeURIComponent(user?.email || "")}`);
+      const headers = await authHeaders();
+      const res = await api("/api/venues/by-owner", { headers });
       if (res.ok) {
         setVenues(await res.json());
       } else {
@@ -63,13 +69,13 @@ export default function VenueScreen({ user, onBack, onViewAnalytics }) {
     setError("");
     setLoading(true);
     try {
+      const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
       const res = await api("/api/venues", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           name: name.trim(),
           slug: slug.trim().toLowerCase(),
-          ownerEmail: user?.email || "",
         }),
       });
       const data = await res.json();
@@ -91,9 +97,10 @@ export default function VenueScreen({ user, onBack, onViewAnalytics }) {
     if (!editName.trim()) return;
     setLoading(true);
     try {
+      const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
       const res = await api(`/api/venues/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ name: editName.trim() }),
       });
       if (res.ok) {
@@ -113,7 +120,8 @@ export default function VenueScreen({ user, onBack, onViewAnalytics }) {
         style: "destructive",
         onPress: async () => {
           try {
-            await api(`/api/venues/${id}`, { method: "DELETE" });
+            const headers = await authHeaders();
+            await api(`/api/venues/${id}`, { method: "DELETE", headers });
             setVenues((prev) => prev.filter((v) => v.id !== id));
           } catch {}
         },

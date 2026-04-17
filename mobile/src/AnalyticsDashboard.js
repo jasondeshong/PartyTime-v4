@@ -10,7 +10,7 @@ import api from "./api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-export default function AnalyticsDashboard({ venue, onBack }) {
+export default function AnalyticsDashboard({ venue, getToken, onBack }) {
   const [overview, setOverview] = useState(null);
   const [peakHours, setPeakHours] = useState(null);
   const [participation, setParticipation] = useState(null);
@@ -43,9 +43,11 @@ export default function AnalyticsDashboard({ venue, onBack }) {
     async function fetchAll() {
       setLoading(true);
       try {
+        const token = getToken ? await getToken() : null;
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const endpoints = ["overview", "peak-hours", "participation", "top-songs", "genre-trends", "songs-played"];
         const results = await Promise.all(
-          endpoints.map((e) => api(`/api/venues/${venue.id}/analytics/${e}`).then((r) => r.json()))
+          endpoints.map((e) => api(`/api/venues/${venue.id}/analytics/${e}`, { headers }).then((r) => r.json()))
         );
         if (cancelled) return;
         setOverview(results[0]);

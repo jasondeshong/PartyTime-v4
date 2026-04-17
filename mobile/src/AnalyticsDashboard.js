@@ -3,8 +3,6 @@ import {
   View, Text, TouchableOpacity, ScrollView, Modal, Share, Alert,
   StyleSheet, Animated, ActivityIndicator, Dimensions,
 } from "react-native";
-import * as FileSystem from "expo-file-system";
-import * as Sharing from "expo-sharing";
 import { palette, fonts, radius, glow, space, type } from "./theme";
 import { GlassCard, ExposedGrid } from "./Glass";
 import { Scarab } from "./Symbols";
@@ -77,13 +75,10 @@ export default function AnalyticsDashboard({ venue, getToken, onBack }) {
       const headers = await authHeaders();
       const res = await api(`/api/venues/${venue.id}/analytics/export`, { headers });
       const csv = await res.text();
-      const fileUri = FileSystem.documentDirectory + `${venue.slug || "venue"}-analytics.csv`;
-      await FileSystem.writeAsStringAsync(fileUri, csv);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { mimeType: "text/csv" });
-      } else {
-        Alert.alert("Exported", `Saved to ${fileUri}`);
-      }
+      await Share.share({
+        message: csv,
+        title: `${venue.name} Analytics Export`,
+      });
     } catch {
       Alert.alert("Export failed", "Could not export analytics data");
     }

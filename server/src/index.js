@@ -926,6 +926,265 @@ app.get("/api/venues/:id/analytics/top-songs", requireSpotifyAuth, requireVenueO
   }
 });
 
+// Session duration: avg/median session length from join/leave pairs
+app.get("/api/venues/:id/analytics/session-duration", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .in("event_type", ["user_joined", "user_left"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    const sessions = {};
+    for (const e of events || []) {
+      const name = e.payload?.userName;
+      if (!name) continue;
+      if (e.event_type === "user_joined") {
+        if (!sessions[name]) sessions[name] = [];
+        sessions[name].push({ joined: new Date(e.created_at), left: null });
+      } else if (e.event_type === "user_left" && sessions[name]?.length) {
+        const last = sessions[name][sessions[name].length - 1];
+        if (!last.left) last.left = new Date(e.created_at);
+      }
+    }
+
+    const durations = [];
+    for (const userSessions of Object.values(sessions)) {
+      for (const s of userSessions) {
+        if (s.joined && s.left) {
+          durations.push((s.left - s.joined) / 60000);
+        }
+      }
+    }
+
+    durations.sort((a, b) => a - b);
+    const avg = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+    const median = durations.length ? durations[Math.floor(durations.length / 2)] : 0;
+    const buckets = { under5: 0, "5to15": 0, "15to30": 0, "30plus": 0 };
+    for (const d of durations) {
+      if (d < 5) buckets.under5++;
+      else if (d < 15) buckets["5to15"]++;
+      else if (d < 30) buckets["15to30"]++;
+      else buckets["30plus"]++;
+    }
+
+    res.json({ since, totalSessions: durations.length, avgMinutes: Math.round(avg), medianMinutes: Math.round(median), buckets });
+  } catch (err) {
+    console.error("Analytics session-duration error:", err);
+    res.status(500).json({ error: "Failed to fetch session duration" });
+  }
+});
+
+// Retention: returning vs new users by day
+app.get("/api/venues/:id/analytics/retention", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("payload, created_at")
+      .eq("venue_id", venueId)
+      .eq("event_type", "user_joined")
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    const firstSeen = {};
+    const dayData = {};
+
+    for (const e of events || []) {
+      const name = e.payload?.userName;
+      if (!name) continue;
+      const day = e.created_at.slice(0, 10);
+      if (!firstSeen[name]) firstSeen[name] = day;
+      if (!dayData[day]) dayData[day] = { newUsers: 0, returning: 0 };
+      if (firstSeen[name] === day) dayData[day].newUsers++;
+      else dayData[day].returning++;
+    }
+
+    const days = Object.entries(dayData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, ...d, total: d.newUsers + d.returning }));
+
+    const totalUnique = Object.keys(firstSeen).length;
+    const returners = Object.values(firstSeen).filter((d, _, arr) => {
+      const name = Object.keys(firstSeen).find((k) => firstSeen[k] === d);
+      return (events || []).filter((e) => e.payload?.userName === name).length > 1;
+    }).length;
+
+    res.json({ since, totalUnique, returningUsers: returners, retentionRate: totalUnique ? Math.round((returners / totalUnique) * 100) : 0, days });
+  } catch (err) {
+    console.error("Analytics retention error:", err);
+    res.status(500).json({ error: "Failed to fetch retention" });
+  }
+});
+
+// Engagement: vote rate, add rate, avg interactions per user
+app.get("/api/venues/:id/analytics/engagement", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload")
+      .eq("venue_id", venueId)
+      .in("event_type", ["user_joined", "vote_cast", "song_added"])
+      .gte("created_at", since);
+
+    const users = new Set();
+    const voters = new Set();
+    const adders = new Set();
+    let totalVotes = 0;
+    let totalAdds = 0;
+
+    for (const e of events || []) {
+      const name = e.payload?.userName || e.payload?.addedBy || e.payload?.voter;
+      if (e.event_type === "user_joined" && name) users.add(name);
+      if (e.event_type === "vote_cast") { voters.add(name); totalVotes++; }
+      if (e.event_type === "song_added") { adders.add(name); totalAdds++; }
+    }
+
+    const total = users.size || 1;
+    res.json({
+      since,
+      totalUsers: users.size,
+      voteRate: Math.round((voters.size / total) * 100),
+      addRate: Math.round((adders.size / total) * 100),
+      avgVotesPerUser: Math.round((totalVotes / total) * 10) / 10,
+      avgAddsPerUser: Math.round((totalAdds / total) * 10) / 10,
+      totalVotes,
+      totalAdds,
+    });
+  } catch (err) {
+    console.error("Analytics engagement error:", err);
+    res.status(500).json({ error: "Failed to fetch engagement" });
+  }
+});
+
+// Crowd timeline: lobby size over time in 15-min buckets
+app.get("/api/venues/:id/analytics/crowd-timeline", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .in("event_type", ["user_joined", "user_left"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    const buckets = {};
+    for (const e of events || []) {
+      const d = new Date(e.created_at);
+      const key = `${d.toISOString().slice(0, 10)} ${String(d.getUTCHours()).padStart(2, "0")}:${d.getUTCMinutes() < 15 ? "00" : d.getUTCMinutes() < 30 ? "15" : d.getUTCMinutes() < 45 ? "30" : "45"}`;
+      if (!buckets[key]) buckets[key] = { time: key, joins: 0, leaves: 0, userCount: 0 };
+      if (e.event_type === "user_joined") buckets[key].joins++;
+      else buckets[key].leaves++;
+      if (e.payload?.userCount != null) buckets[key].userCount = Math.max(buckets[key].userCount, e.payload.userCount);
+    }
+
+    const timeline = Object.values(buckets).sort((a, b) => a.time.localeCompare(b.time));
+    res.json({ since, timeline });
+  } catch (err) {
+    console.error("Analytics crowd-timeline error:", err);
+    res.status(500).json({ error: "Failed to fetch crowd timeline" });
+  }
+});
+
+// Queue health: avg queue depth, dry-queue incidents
+app.get("/api/venues/:id/analytics/queue-health", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .in("event_type", ["song_added", "song_played", "song_skipped"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    let adds = 0, plays = 0, skips = 0;
+    const addTimes = [];
+    for (const e of events || []) {
+      if (e.event_type === "song_added") { adds++; addTimes.push(new Date(e.created_at)); }
+      if (e.event_type === "song_played") plays++;
+      if (e.event_type === "song_skipped") skips++;
+    }
+
+    let avgTimeBetweenAdds = 0;
+    if (addTimes.length > 1) {
+      let totalGap = 0;
+      for (let i = 1; i < addTimes.length; i++) {
+        totalGap += (addTimes[i] - addTimes[i - 1]) / 60000;
+      }
+      avgTimeBetweenAdds = Math.round(totalGap / (addTimes.length - 1));
+    }
+
+    res.json({
+      since,
+      totalAdds: adds,
+      totalPlays: plays,
+      totalSkips: skips,
+      skipRate: plays ? Math.round((skips / plays) * 100) : 0,
+      avgMinutesBetweenAdds: avgTimeBetweenAdds,
+    });
+  } catch (err) {
+    console.error("Analytics queue-health error:", err);
+    res.status(500).json({ error: "Failed to fetch queue health" });
+  }
+});
+
+// CSV export of all analytics
+app.get("/api/venues/:id/analytics/export", requireSpotifyAuth, requireVenueOwner, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    const { data: venue } = await supabase
+      .from("venues")
+      .select("name, slug")
+      .eq("id", venueId)
+      .single();
+
+    let csv = `PartyTime Analytics Export — ${venue?.name || "Venue"}\n`;
+    csv += `Period: ${since} to ${new Date().toISOString()}\n\n`;
+    csv += `Timestamp,Event Type,User,Song Title,Song Artist,Details\n`;
+
+    for (const e of events || []) {
+      const p = e.payload || {};
+      const user = p.userName || p.addedBy || p.voter || p.removedBy || "";
+      const title = (p.title || "").replace(/,/g, ";");
+      const artist = (p.artist || "").replace(/,/g, ";");
+      const details = (p.direction || p.spotifyId || "").replace(/,/g, ";");
+      csv += `${e.created_at},${e.event_type},${user},${title},${artist},${details}\n`;
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${venue?.slug || "venue"}-analytics.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error("Analytics export error:", err);
+    res.status(500).json({ error: "Export failed" });
+  }
+});
+
 // --- Helper: load lobby from Supabase ---
 async function getLobby(code) {
   const { data, error } = await supabase

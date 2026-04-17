@@ -34,8 +34,8 @@ final class SpotifyRemoteManager: NSObject, SPTAppRemoteDelegate, SPTAppRemotePl
     guard let appRemote = appRemote else { return false }
     let params = appRemote.authorizationParameters(from: url)
     if let token = params?[SPTAppRemoteAccessTokenKey] as? String {
-      appRemote.connectionParameters.accessToken = token
-      appRemote.connect()
+      // Fresh instance — the old one has stale IPC state from the failed connect
+      createAndConnect(accessToken: token)
       return true
     }
     return false

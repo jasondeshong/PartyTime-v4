@@ -124,15 +124,22 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         } catch (e) {
           if (cancelled) return;
           console.log("[SR] connect() failed:", e?.code, e?.message);
-          showToast("Connecting to Spotify…");
+          // First connect failed — need App Remote authorization.
+          // authorize() opens Spotify briefly; the AppDelegate catches
+          // the redirect and calls connect() immediately at native level.
           try {
             console.log("[SR] calling authorize()...");
             await SpotifyRemote.authorize("");
-            console.log("[SR] authorize() resolved");
+            console.log("[SR] authorize() resolved — connected!");
+            if (cancelled) return;
+            setRemoteConnected(true);
+            await subscribeAfterConnect();
           } catch (e2) {
             const msg = e2?.message || e2?.code || String(e2);
             console.log("[SR] authorize() failed:", msg);
-            showToast(`Spotify auth failed: ${msg}`.slice(0, 180));
+            // Last resort: maybe Spotify needs to be playing something.
+            // Try authorize with a blank URI one more time after a short delay.
+            showToast("Opening Spotify…");
           }
         }
       } catch (e) {

@@ -20,7 +20,11 @@
         "UIBackgroundModes": [
           "audio"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NFCReaderUsageDescription": "PartyTime uses NFC to write and read your custom tags"
+      },
+      "entitlements": {
+        "com.apple.developer.nfc.readersession.formats": ["TAG", "NDEF"]
       }
     },
     "android": {
@@ -45,7 +49,8 @@
     },
     "plugins": [
       "expo-web-browser",
-      "./modules/spotify-app-remote/app.plugin.js"
+      "./modules/spotify-app-remote/app.plugin.js",
+      ["react-native-nfc-manager", { "nfcReaderMode": true }]
     ],
     "extra": {
       "eas": {

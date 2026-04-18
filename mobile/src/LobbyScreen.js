@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
@@ -75,7 +75,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   function showToast(msg) {
     setToast(msg);
     clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(null), 3500);
+    toastRef.current = setTimeout(() => setToast(null), 1500);
   }
 
   // Keep nowPlayingRef in sync + build album carousel history
@@ -486,13 +486,21 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     if (tab === "playlists" && playlists.length === 0) loadPlaylists();
   }, [tab, hasToken]);
 
+  const addedRecently = useRef(new Set());
   function addSong(song) {
+    if (addedRecently.current.has(song.spotifyId)) return;
+    addedRecently.current.add(song.spotifyId);
+    setTimeout(() => addedRecently.current.delete(song.spotifyId), 1000);
+
     if (!socket.connected) {
       socket.connect();
-      socket.emit("rejoin", { code, name: user?.name });
+      socket.once("connect", () => {
+        socket.emit("rejoin", { code, name: user?.name });
+        socket.emit("add-song", { code, song });
+      });
+    } else {
+      socket.emit("add-song", { code, song });
     }
-    socket.emit("add-song", { code, song });
-    showToast(`Added "${song.title}"`);
   }
 
   function vote(songId, direction) {
@@ -569,9 +577,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     return `${min}:${sec.toString().padStart(2, "0")}`;
   }
 
-  function SongRow({ song }) {
+  const MemoSongRow = React.memo(function SongRow({ song, onAdd }) {
     return (
-      <TouchableOpacity style={s.songRow} onPress={() => addSong(song)} activeOpacity={0.6}>
+      <TouchableOpacity style={s.songRow} onPress={() => onAdd(song)} activeOpacity={0.6}>
         {song.albumArt ? (
           <Image source={{ uri: song.albumArt }} style={s.songArt} />
         ) : (
@@ -584,7 +592,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         <Text style={s.songDuration}>{fmt(song.duration)}</Text>
       </TouchableOpacity>
     );
-  }
+  });
 
   function QueueItem({ song, index }) {
     return (
@@ -627,9 +635,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     >
       {/* Toast */}
       {toast && (
-        <GlassCard intensity={60} borderRadius={radius.pill} style={s.toast}>
+        <View style={s.toast}>
           <Text style={s.toastText}>{toast}</Text>
-        </GlassCard>
+        </View>
       )}
 
       <ScrollView
@@ -913,7 +921,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               </View>
             )}
             {results.map((song, i) => (
-              <SongRow key={`${song.spotifyId}-r${i}`} song={song} />
+              <MemoSongRow key={`${song.spotifyId}-r${i}`} song={song} onAdd={addSong} />
             ))}
           </View>
         )}
@@ -929,7 +937,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             ) : (
               <>
                 {likedSongs.map((song, i) => (
-                  <SongRow key={`${song.spotifyId}-l${i}`} song={song} />
+                  <MemoSongRow key={`${song.spotifyId}-l${i}`} song={song} onAdd={addSong} />
                 ))}
                 {likedHasMore && (
                   <TouchableOpacity
@@ -961,7 +969,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   <Text style={s.backText}>{"\u2190"} {selectedPlaylist.name}</Text>
                 </TouchableOpacity>
                 {playlistTracks.map((song, i) => (
-                  <SongRow key={`${song.spotifyId}-p${i}`} song={song} />
+                  <MemoSongRow key={`${song.spotifyId}-p${i}`} song={song} onAdd={addSong} />
                 ))}
                 {playlistTracksHasMore && (
                   <TouchableOpacity
@@ -1028,7 +1036,9 @@ const s = StyleSheet.create({
   // Toast
   toast: {
     position: "absolute", top: 50, left: 20, right: 20, zIndex: 100,
-    padding: 14, alignItems: "center",
+    padding: 12, alignItems: "center",
+    backgroundColor: palette.onyx, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: palette.glassBorder,
   },
   toastText: { color: palette.papyrus, fontSize: 13, fontFamily: fonts.mono, letterSpacing: 0.3 },
 

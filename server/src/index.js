@@ -1490,9 +1490,14 @@ io.on("connection", (socket) => {
     const lobby = await getLobby(code);
     if (!lobby) return;
 
+    // Check if currently playing
+    if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
+      socket.emit("add-error", "This song is currently playing");
+      return;
+    }
+
     const existing = lobby.queue.find((s) => s.spotifyId === song.spotifyId);
     if (existing) {
-      // Treat as upvote
       const voteKey = `${code}:${existing.id}`;
       if (!userVotes.has(voteKey)) userVotes.set(voteKey, new Map());
       const songVotes = userVotes.get(voteKey);
@@ -1510,15 +1515,8 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Also check if currently playing
-    if (lobby.nowPlaying?.spotifyId === song.spotifyId) {
-      socket.emit("add-error", "This song is currently playing");
-      return;
-    }
-
-    const id = crypto.randomUUID();
+    // Insert song
     const { error } = await supabase.from("queue").insert({
-      id,
       lobby_code: code,
       spotify_id: song.spotifyId,
       title: song.title,
@@ -1536,15 +1534,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Analytics: song added
+    // Fire-and-forget analytics
     const venueId = await getVenueIdForLobby(code);
-    trackEvent(venueId, code, "song_added", {
-      spotifyId: song.spotifyId,
-      title: song.title,
-      artist: song.artist,
-      addedBy: userName,
-    });
+    trackEvent(venueId, code, "song_added", { spotifyId: song.spotifyId, title: song.title, artist: song.artist, addedBy: userName }).catch(() => {});
 
+    // Single getLobby for the response
     const refreshed = await getLobby(code);
     if (!refreshed) return;
 
@@ -1552,23 +1546,18 @@ io.on("connection", (socket) => {
     if (!refreshed.nowPlaying && refreshed.queue.length === 1) {
       const firstSong = refreshed.queue[0];
       await supabase.from("queue").delete().eq("id", firstSong.id);
-      await supabase
-        .from("lobbies")
-        .update({ now_playing: firstSong })
-        .eq("code", code);
-
+      await supabase.from("lobbies").update({ now_playing: firstSong }).eq("code", code);
       if (played) played.set(firstSong.spotifyId, Date.now());
+      trackEvent(venueId, code, "song_played", { spotifyId: firstSong.spotifyId, title: firstSong.title, artist: firstSong.artist }).catch(() => {});
 
-      // Analytics: song started playing
-      trackEvent(venueId, code, "song_played", {
-        spotifyId: firstSong.spotifyId,
-        title: firstSong.title,
-        artist: firstSong.artist,
-      });
-
-      const updated = await getLobby(code);
       io.to(code).emit("now-playing", firstSong);
-      io.to(code).emit("queue-updated", updated?.queue || []);
+      // Read queue once more for the emit (now empty since we auto-played the only song)
+      const { data: remaining } = await supabase.from("queue").select("*").eq("lobby_code", code).order("votes", { ascending: false });
+      io.to(code).emit("queue-updated", (remaining || []).map((s) => ({
+        id: s.id, spotifyId: s.spotify_id, title: s.title, artist: s.artist,
+        album: s.album, albumArt: s.album_art, previewUrl: s.preview_url,
+        duration: s.duration, votes: s.votes, addedBy: s.added_by,
+      })));
     } else {
       io.to(code).emit("queue-updated", refreshed.queue);
     }

@@ -207,6 +207,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           setDuration(state.durationMs || 0);
           setPosition(state.positionMs || 0);
           if (state.durationMs) setProgress(state.positionMs / state.durationMs);
+
+          // Auto-advance: track ended
+          if (state.isPaused && state.durationMs > 0 && state.positionMs >= state.durationMs - 1500) {
+            const np = nowPlayingRef.current;
+            if (np?.spotifyId && skipFiredRef.current !== np.spotifyId) {
+              skipFiredRef.current = np.spotifyId;
+              socket.emit("skip", code);
+            }
+          }
         }
       } catch {}
     }, 500);
@@ -360,6 +369,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       setTimeout(onLeave, 2000);
     });
 
+    socket.on("disconnect", () => {
+      console.log("[SR] socket disconnected — will reconnect");
+    });
+    socket.on("connect", () => {
+      console.log("[SR] socket reconnected — rejoining lobby");
+      socket.emit("rejoin", code);
+    });
+
     return () => {
       socket.off("lobby-state");
       socket.off("queue-updated");
@@ -369,6 +386,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       socket.off("add-duplicate");
       socket.off("song-removed-by-votes");
       socket.off("lobby-closed");
+      socket.off("disconnect");
+      socket.off("connect");
     };
   }, []);
 
@@ -451,11 +470,12 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   }, [tab, hasToken]);
 
   function addSong(song) {
-    socket.emit("add-song", { code, song });
-    if (tab === "search") {
-      setSearch("");
-      setResults([]);
+    if (!socket.connected) {
+      socket.connect();
+      socket.emit("rejoin", code);
     }
+    socket.emit("add-song", { code, song });
+    showToast(`Added "${song.title}"`);
   }
 
   function vote(songId, direction) {

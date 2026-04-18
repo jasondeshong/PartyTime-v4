@@ -28,9 +28,16 @@ export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings
   const toastRef = useRef(null);
   const [activeVenues, setActiveVenues] = useState([]);
   const [lastLobby, setLastLobby] = useState(null);
+  const [announcement, setAnnouncement] = useState("");
 
   useEffect(() => {
     (async () => {
+      // Check for platform announcement
+      try {
+        const aRes = await api("/api/announcement");
+        if (aRes.ok) { const d = await aRes.json(); if (d.message) setAnnouncement(d.message); }
+      } catch {}
+
       // Check for a consumer lobby to rejoin
       try {
         const stored = await AsyncStorage.getItem("pt_active_lobby");
@@ -125,6 +132,13 @@ export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings
     >
       {/* Background grid */}
       <ExposedGrid />
+
+      {/* Platform announcement */}
+      {announcement ? (
+        <View style={s.announcementBar}>
+          <Text style={s.announcementText}>{announcement}</Text>
+        </View>
+      ) : null}
 
       {/* Toast */}
       {toast && (
@@ -365,6 +379,8 @@ const s = StyleSheet.create({
     fontFamily: fonts.mono,
     textDecorationLine: "underline",
   },
+  announcementBar: { position: "absolute", top: 50, left: 16, right: 16, zIndex: 50, backgroundColor: palette.amber, borderRadius: radius.button, padding: 12, alignItems: "center" },
+  announcementText: { color: palette.obsidian, fontSize: 13, fontFamily: fonts.monoBold, textAlign: "center" },
   activeVenues: { marginTop: space.lg, gap: space.sm },
   activeVenueCard: {
     flexDirection: "row", alignItems: "center",

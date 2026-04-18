@@ -772,6 +772,8 @@ app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
         isPaid: v.settings?.isPaid || false,
         isActive: v.settings?.active || false,
         tier: v.settings?.tier || "free",
+        suspended: v.settings?.suspended || false,
+        adminNote: v.settings?.adminNote || "",
         lobbyCode: v.lobby_code,
         createdAt: v.created_at,
         eventCount: venueEvents[v.id] || 0,
@@ -1015,6 +1017,140 @@ app.get("/api/admin/live", requireAdmin, async (_req, res) => {
     lobbyCount: activeLobbies.length,
     totalUsers: activeLobbies.reduce((sum, l) => sum + l.userCount, 0),
   });
+});
+
+// Admin: edit venue name/slug
+app.put("/api/admin/venues/:id", requireAdmin, async (req, res) => {
+  const { name, slug } = req.body;
+  const updates = {};
+  if (name) updates.name = name;
+  if (slug) updates.slug = slug;
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "Nothing to update" });
+  const { error } = await supabase.from("venues").update(updates).eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Admin: regenerate claim code
+app.post("/api/admin/venues/:id/regen-code", requireAdmin, async (req, res) => {
+  const newCode = generateCode() + generateCode();
+  const { data: venue } = await supabase.from("venues").select("settings").eq("id", req.params.id).single();
+  if (!venue) return res.status(404).json({ error: "Not found" });
+  const settings = { ...(venue.settings || {}), claimCode: newCode };
+  await supabase.from("venues").update({ settings }).eq("id", req.params.id);
+  res.json({ claimCode: newCode });
+});
+
+// Admin: add note to venue
+app.post("/api/admin/venues/:id/note", requireAdmin, async (req, res) => {
+  const { note } = req.body;
+  const { data: venue } = await supabase.from("venues").select("settings").eq("id", req.params.id).single();
+  if (!venue) return res.status(404).json({ error: "Not found" });
+  const settings = { ...(venue.settings || {}), adminNote: note || "" };
+  await supabase.from("venues").update({ settings }).eq("id", req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: set venue tier
+app.post("/api/admin/venues/:id/set-tier", requireAdmin, async (req, res) => {
+  const { tier } = req.body;
+  const { data: venue } = await supabase.from("venues").select("settings").eq("id", req.params.id).single();
+  if (!venue) return res.status(404).json({ error: "Not found" });
+  const settings = { ...(venue.settings || {}), tier: tier || "free" };
+  await supabase.from("venues").update({ settings }).eq("id", req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: user analytics (unique users, top users, growth)
+app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+  try {
+    const { data: events } = await supabase.from("analytics_events").select("event_type, payload, created_at")
+      .in("event_type", ["user_joined", "song_added", "vote_cast"]);
+
+    const userStats = {};
+    const dailyUsers = {};
+    for (const e of events || []) {
+      const name = e.payload?.userName || e.payload?.addedBy || e.payload?.voter;
+      if (!name) continue;
+      if (!userStats[name]) userStats[name] = { name, joins: 0, adds: 0, votes: 0, firstSeen: e.created_at };
+      if (e.event_type === "user_joined") userStats[name].joins++;
+      if (e.event_type === "song_added") userStats[name].adds++;
+      if (e.event_type === "vote_cast") userStats[name].votes++;
+      if (e.created_at < userStats[name].firstSeen) userStats[name].firstSeen = e.created_at;
+
+      const day = e.created_at?.slice(0, 10);
+      if (day && e.event_type === "user_joined") {
+        if (!dailyUsers[day]) dailyUsers[day] = new Set();
+        dailyUsers[day].add(name);
+      }
+    }
+
+    const topByAdds = Object.values(userStats).sort((a, b) => b.adds - a.adds).slice(0, 20);
+    const topByVotes = Object.values(userStats).sort((a, b) => b.votes - a.votes).slice(0, 20);
+    const growth = Object.entries(dailyUsers).sort(([a], [b]) => a.localeCompare(b)).slice(-30).map(([date, set]) => ({ date, count: set.size }));
+
+    res.json({ totalUsers: Object.keys(userStats).length, topByAdds, topByVotes, growth });
+  } catch (err) { res.status(500).json({ error: "Failed" }); }
+});
+
+// Admin: raw event log
+app.get("/api/admin/events", requireAdmin, async (req, res) => {
+  const { type, venue, limit: lim } = req.query;
+  let query = supabase.from("analytics_events").select("event_type, payload, created_at, venue_id")
+    .order("created_at", { ascending: false }).limit(parseInt(lim) || 100);
+  if (type) query = query.eq("event_type", type);
+  if (venue) query = query.eq("venue_id", venue);
+  const { data } = await query;
+  res.json({ events: (data || []).map((e) => ({ type: e.event_type, payload: e.payload, time: e.created_at, venueId: e.venue_id })) });
+});
+
+// Admin: block/unblock a song platform-wide
+const blockedSongs = new Set();
+app.post("/api/admin/block-song", requireAdmin, async (req, res) => {
+  const { spotifyId, block } = req.body;
+  if (block) blockedSongs.add(spotifyId);
+  else blockedSongs.delete(spotifyId);
+  res.json({ blocked: block, total: blockedSongs.size });
+});
+
+app.get("/api/admin/blocked-songs", requireAdmin, async (_req, res) => {
+  res.json({ blocked: [...blockedSongs] });
+});
+
+// Admin: set in-app announcement
+let globalAnnouncement = "";
+app.post("/api/admin/announcement", requireAdmin, async (req, res) => {
+  globalAnnouncement = req.body.message || "";
+  res.json({ message: globalAnnouncement });
+});
+
+app.get("/api/announcement", (_req, res) => {
+  res.json({ message: globalAnnouncement });
+});
+
+// Admin: export venue list as CSV
+app.get("/api/admin/export-venues", requireAdmin, async (_req, res) => {
+  const { data: venues } = await supabase.from("venues").select("*").order("created_at", { ascending: false });
+  let csv = "Name,Slug,Owner,Paid,Active,Claim Code,Created\n";
+  for (const v of venues || []) {
+    csv += `"${v.name}",${v.slug},${v.owner_spotify_id || ""},${v.settings?.isPaid || false},${v.settings?.active || false},${v.settings?.claimCode || ""},${v.created_at?.slice(0, 10)}\n`;
+  }
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=partytime-venues.csv");
+  res.send(csv);
+});
+
+// Admin: pipeline/leads tracking
+app.get("/api/admin/pipeline", requireAdmin, async (_req, res) => {
+  const { data: venues } = await supabase.from("venues").select("id, name, slug, owner_spotify_id, settings, created_at");
+  const pipeline = (venues || []).map((v) => ({
+    id: v.id, name: v.name, slug: v.slug,
+    status: v.owner_spotify_id && v.owner_spotify_id !== "unclaimed" ? "active" : v.settings?.isPaid ? "created" : "lead",
+    note: v.settings?.adminNote || "",
+    tier: v.settings?.tier || "free",
+    createdAt: v.created_at,
+  }));
+  res.json({ pipeline });
 });
 
 // Stripe webhook — auto-activate venue on payment
@@ -1711,6 +1847,12 @@ io.on("connection", (socket) => {
     // Check if already in queue — upvote instead
     const lobby = await getLobby(code);
     if (!lobby) return;
+
+    // Check if song is blocked platform-wide
+    if (blockedSongs.has(song.spotifyId)) {
+      socket.emit("add-error", "This song has been blocked");
+      return;
+    }
 
     // Check if currently playing
     if (lobby.nowPlaying?.spotifyId === song.spotifyId) {

@@ -13,7 +13,8 @@ import { ShenRing, Scarab } from "./Symbols";
 import { GlassCard, ScanLines, DotMatrix } from "./Glass";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const ALBUM_SIZE = SCREEN_WIDTH * 0.48;
+const ALBUM_MAIN = SCREEN_WIDTH * 0.40;
+const ALBUM_SIZE = ALBUM_MAIN;
 
 export default function LobbyScreen({ code, isHost, user, initialState, getToken, onLeave, onConnectSpotify }) {
   const [queue, setQueue] = useState(initialState?.queue || []);
@@ -21,6 +22,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [nowPlaying, setNowPlaying] = useState(initialState?.nowPlaying || null);
   const [venueName] = useState(initialState?.venueName || null);
   const [venueSlug] = useState(initialState?.venueSlug || null);
+  const [venueLogoUrl] = useState(initialState?.venueLogoUrl || null);
+  const [venueAccentColor] = useState(initialState?.venueAccentColor || null);
+  const accent = venueAccentColor || palette.amber;
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -515,42 +519,49 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         </View>
 
         {/* Now Playing — hero glass card with scan lines, overflow for rolodex */}
-        <GlassCard intensity={35} borderRadius={radius.card} glow={glow.hero} allowOverflow style={s.nowPlaying}>
-          {/* Scan-line texture overlay — subtle CRT feel */}
+        <GlassCard intensity={35} borderRadius={radius.card} glow={{ ...glow.hero, shadowColor: accent }} allowOverflow style={s.nowPlaying}>
           <ScanLines />
-          {nowPlaying ? (
-            <>
-              {/* Horizontal rolodex — upcoming left, playing center, played right */}
-              <View style={s.rolodex}>
-                {/* Upcoming (from queue) — stacked left, next song more visible */}
-                {queue.slice(0, 3).reverse().map((song, i) => {
-                  const idx = 2 - i;
-                  // Pull closer to center so they don't clip at card edge
-                  const offsetX = -(ALBUM_SIZE * 0.38) - idx * 14;
-                  const offsetY = 8 + idx * 4;
-                  const opacity = [0.5, 0.25, 0.12][idx] || 0.08;
-                  const scale = [0.48, 0.38, 0.30][idx] || 0.26;
-                  return song.albumArt ? (
-                    <View
-                      key={`up-${song.id}`}
-                      style={[s.rolodexCard, {
-                        zIndex: 3 - idx,
-                        opacity,
-                        transform: [
-                          { translateX: offsetX },
-                          { translateY: offsetY },
-                          { perspective: 800 },
-                          { rotateY: "42deg" },
-                          { scale },
-                        ],
-                      }]}
-                    >
-                      <Image source={{ uri: song.albumArt }} style={s.rolodexImg} />
-                    </View>
-                  ) : null;
-                })}
 
-                {/* Now playing — winged sun disc glow halo */}
+          {/* Venue logo */}
+          {venueLogoUrl && (
+            <View style={s.venueLogoRow}>
+              <Image source={{ uri: venueLogoUrl }} style={s.venueLogo} resizeMode="contain" />
+            </View>
+          )}
+
+          {/* Album art deck — always visible */}
+          <View style={s.rolodex}>
+            {/* Upcoming (from queue) — stacked left, mirroring the right side */}
+            {queue.slice(0, 3).reverse().map((song, i) => {
+              const idx = 2 - i;
+              const offsetX = -(ALBUM_MAIN * 0.58) - idx * 14;
+              const offsetY = 18 + idx * 4;
+              const opacity = [0.35, 0.2, 0.1][idx] || 0.06;
+              const scale = [0.48, 0.42, 0.36][idx] || 0.32;
+              return song.albumArt ? (
+                <View
+                  key={`up-${song.id}`}
+                  style={[s.rolodexCard, {
+                    zIndex: 3 - idx,
+                    opacity,
+                    transform: [
+                      { translateX: offsetX },
+                      { translateY: offsetY },
+                      { perspective: 600 },
+                      { rotateY: "78deg" },
+                      { scale },
+                    ],
+                  }]}
+                >
+                  <Image source={{ uri: song.albumArt }} style={s.rolodexImg} />
+                </View>
+              ) : null;
+            })}
+
+            {/* Center — now playing or most recent album */}
+            {(() => {
+              const centerArt = nowPlaying?.albumArt || albumHistory[0]?.art;
+              return centerArt ? (
                 <Animated.View
                   style={[
                     s.rolodexMain,
@@ -559,47 +570,52 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                         { translateY: -6 },
                         { scale: deckAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
                       ],
-                      opacity: deckAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }),
+                      opacity: nowPlaying ? deckAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }) : 0.5,
                     },
                   ]}
                 >
-                  {nowPlaying.albumArt ? (
-                    <Image source={{ uri: nowPlaying.albumArt }} style={s.rolodexMainImg} />
-                  ) : (
-                    <View style={[s.rolodexMainImg, { backgroundColor: palette.glass }]} />
-                  )}
+                  <Image source={{ uri: centerArt }} style={s.rolodexMainImg} />
                 </Animated.View>
+              ) : (
+                <View style={[s.rolodexMain, { opacity: 0.3 }]}>
+                  <View style={[s.rolodexMainImg, { backgroundColor: palette.glass }]} />
+                </View>
+              );
+            })()}
 
-                {/* Played — spines, edge-on to the right */}
-                {albumHistory.slice(1, 4).map((album, i) => {
-                  const offsetX = (ALBUM_SIZE * 0.58) + i * 14;
-                  const offsetY = 18 + i * 4;
-                  const opacity = [0.35, 0.2, 0.1][i] || 0.06;
-                  const scale = [0.48, 0.42, 0.36][i] || 0.32;
-                  return (
-                    <View
-                      key={`played-${album.spotifyId}`}
-                      style={[s.rolodexCard, {
-                        zIndex: 2 - i,
-                        opacity,
-                        transform: [
-                          { translateX: offsetX },
-                          { translateY: offsetY },
-                          { perspective: 600 },
-                          { rotateY: "-78deg" },
-                          { scale },
-                        ],
-                      }]}
-                    >
-                      <Image source={{ uri: album.art }} style={s.rolodexImg} />
-                    </View>
-                  );
-                })}
-              </View>
+            {/* Played — spines, edge-on to the right */}
+            {(albumHistory.length > 0 ? albumHistory : []).slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 3).map((album, i) => {
+              const offsetX = (ALBUM_MAIN * 0.58) + i * 14;
+              const offsetY = 18 + i * 4;
+              const opacity = [0.35, 0.2, 0.1][i] || 0.06;
+              const scale = [0.48, 0.42, 0.36][i] || 0.32;
+              return (
+                <View
+                  key={`played-${album.spotifyId}`}
+                  style={[s.rolodexCard, {
+                    zIndex: 2 - i,
+                    opacity,
+                    transform: [
+                      { translateX: offsetX },
+                      { translateY: offsetY },
+                      { perspective: 600 },
+                      { rotateY: "-78deg" },
+                      { scale },
+                    ],
+                  }]}
+                >
+                  <Image source={{ uri: album.art }} style={s.rolodexImg} />
+                </View>
+              );
+            })}
+          </View>
+
+          {nowPlaying ? (
+            <>
 
               {/* Track info */}
               <View style={s.npInfo}>
-                <Text style={s.npLabel}>NOW PLAYING</Text>
+                <Text style={[s.npLabel, { color: accent }]}>NOW PLAYING</Text>
                 <Text style={s.npTitle} numberOfLines={1}>{nowPlaying.title}</Text>
                 <Text style={s.npArtist} numberOfLines={1}>{nowPlaying.artist}</Text>
                 {nowPlaying.addedBy && (
@@ -613,7 +629,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   <TouchableOpacity onPress={saveToLibrary} activeOpacity={0.7}>
                     <ShenRing
                       size={32}
-                      color={saved ? palette.amber : palette.sandstone}
+                      color={saved ? accent : palette.sandstone}
                       filled={saved}
                     />
                   </TouchableOpacity>
@@ -626,7 +642,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   <View style={s.progressRow}>
                     <Text style={s.progressTime}>{fmt(position)}</Text>
                     <View style={s.progressTrack}>
-                      <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%` }]} />
+                      <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: accent }]} />
                     </View>
                     <Text style={s.progressTime}>{fmt(duration)}</Text>
                   </View>
@@ -822,6 +838,8 @@ const s = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerTitle: { color: palette.papyrus, fontSize: 18, fontFamily: fonts.monoBold, letterSpacing: 1.5 },
   venueSubtitle: { color: palette.dust, fontSize: 9, fontFamily: fonts.serifItalic, fontStyle: "italic", letterSpacing: 1, marginTop: 1 },
+  venueLogoRow: { alignItems: "center", marginBottom: space.sm },
+  venueLogo: { width: 80, height: 40 },
   hostLabel: { color: palette.amber, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   guestLabel: { color: palette.sandstone, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   codeText: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 4, marginTop: space.xs },

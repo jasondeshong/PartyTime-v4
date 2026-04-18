@@ -1205,15 +1205,19 @@ async function getLobby(code) {
   const venueId = await getVenueIdForLobby(code);
   let venueName = null;
   let venueSlug = null;
+  let venueLogoUrl = null;
+  let venueAccentColor = null;
   if (venueId) {
     const { data: venue } = await supabase
       .from("venues")
-      .select("name, slug")
+      .select("name, slug, settings")
       .eq("id", venueId)
       .single();
     if (venue) {
       venueName = venue.name;
       venueSlug = venue.slug;
+      venueLogoUrl = venue.settings?.logoUrl || null;
+      venueAccentColor = venue.settings?.accentColor || null;
     }
   }
 
@@ -1222,6 +1226,8 @@ async function getLobby(code) {
     nowPlaying: data.now_playing,
     venueName,
     venueSlug,
+    venueLogoUrl,
+    venueAccentColor,
     queue: (songs || []).map((s) => ({
       id: s.id,
       spotifyId: s.spotify_id,

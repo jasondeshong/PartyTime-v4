@@ -16,6 +16,8 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
   const [slug, setSlug] = useState("");
   const [editingVenue, setEditingVenue] = useState(null);
   const [editName, setEditName] = useState("");
+  const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [editAccentColor, setEditAccentColor] = useState("");
   const [error, setError] = useState("");
 
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -97,11 +99,18 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
     if (!editName.trim()) return;
     setLoading(true);
     try {
+      const venue = venues.find((v) => v.id === id);
+      const settings = { ...(venue?.settings || {}) };
+      if (editLogoUrl.trim()) settings.logoUrl = editLogoUrl.trim();
+      else delete settings.logoUrl;
+      if (editAccentColor.trim()) settings.accentColor = editAccentColor.trim();
+      else delete settings.accentColor;
+
       const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
       const res = await api(`/api/venues/${id}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ name: editName.trim() }),
+        body: JSON.stringify({ name: editName.trim(), settings }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -238,14 +247,36 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
               <GlassCard key={venue.id} intensity={30} borderRadius={radius.card} glow={glow.subtle} style={[s.card, { marginBottom: space.md }]}>
                 {editingVenue === venue.id ? (
                   <View>
+                    <Text style={s.editLabel}>NAME</Text>
                     <TextInput
                       style={s.input}
                       value={editName}
                       onChangeText={setEditName}
                       autoFocus
-                      returnKeyType="done"
-                      onSubmitEditing={() => updateVenue(venue.id)}
                     />
+                    <Text style={s.editLabel}>LOGO URL</Text>
+                    <TextInput
+                      style={s.input}
+                      value={editLogoUrl}
+                      onChangeText={setEditLogoUrl}
+                      placeholder="https://example.com/logo.png"
+                      placeholderTextColor={palette.dust}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <Text style={s.editLabel}>ACCENT COLOR</Text>
+                    <TextInput
+                      style={s.input}
+                      value={editAccentColor}
+                      onChangeText={setEditAccentColor}
+                      placeholder="#D4884A (default amber)"
+                      placeholderTextColor={palette.dust}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {editAccentColor ? (
+                      <View style={[s.colorPreview, { backgroundColor: editAccentColor }]} />
+                    ) : null}
                     <View style={s.btnRow}>
                       <TouchableOpacity onPress={() => setEditingVenue(null)} activeOpacity={0.7}>
                         <Text style={s.cancelText}>Cancel</Text>
@@ -284,7 +315,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                       <TouchableOpacity onPress={() => onViewAnalytics(venue)} activeOpacity={0.7}>
                         <Text style={s.actionText}>Analytics</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setEditingVenue(venue.id); setEditName(venue.name); }} activeOpacity={0.7}>
+                      <TouchableOpacity onPress={() => { setEditingVenue(venue.id); setEditName(venue.name); setEditLogoUrl(venue.settings?.logoUrl || ""); setEditAccentColor(venue.settings?.accentColor || ""); }} activeOpacity={0.7}>
                         <Text style={s.actionText}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => deleteVenue(venue.id, venue.name)} activeOpacity={0.7}>
@@ -365,4 +396,6 @@ const s = StyleSheet.create({
   venueActions: { flexDirection: "row", gap: space.lg, marginTop: space.xs },
   actionText: { color: palette.amber, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
   deleteText: { color: palette.scarabRed, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
+  editLabel: { ...type.label, color: palette.dust, fontFamily: fonts.monoBold, marginTop: space.sm, marginBottom: 2 },
+  colorPreview: { width: 32, height: 32, borderRadius: 8, marginBottom: space.sm, borderWidth: 1, borderColor: palette.glassBorder },
 });

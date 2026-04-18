@@ -1,12 +1,28 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView, Image,
   StyleSheet, Alert, Animated, ActivityIndicator,
 } from "react-native";
 import { palette, fonts, radius, glow, space, type } from "./theme";
 import { GlassCard, ExposedGrid } from "./Glass";
 import { ShenRing } from "./Symbols";
+import * as ImagePicker from "expo-image-picker";
 import api from "./api";
+
+const ACCENT_PRESETS = [
+  { name: "Amber", hex: "#D4884A" },
+  { name: "Gold", hex: "#C9A84C" },
+  { name: "Rose", hex: "#C75B7A" },
+  { name: "Coral", hex: "#E07650" },
+  { name: "Scarab", hex: "#E05555" },
+  { name: "Violet", hex: "#9B72CF" },
+  { name: "Cobalt", hex: "#5B8DEF" },
+  { name: "Teal", hex: "#4ABFBF" },
+  { name: "Emerald", hex: "#50B87A" },
+  { name: "Spotify", hex: "#1DB954" },
+  { name: "Ice", hex: "#8BB8D0" },
+  { name: "Bone", hex: "#C8C2B4" },
+];
 
 export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, onHostLobby }) {
   const [venues, setVenues] = useState([]);
@@ -101,9 +117,9 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
     try {
       const venue = venues.find((v) => v.id === id);
       const settings = { ...(venue?.settings || {}) };
-      if (editLogoUrl.trim()) settings.logoUrl = editLogoUrl.trim();
+      if (editLogoUrl) settings.logoUrl = editLogoUrl;
       else delete settings.logoUrl;
-      if (editAccentColor.trim()) settings.accentColor = editAccentColor.trim();
+      if (editAccentColor) settings.accentColor = editAccentColor;
       else delete settings.accentColor;
 
       const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
@@ -254,29 +270,46 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                       onChangeText={setEditName}
                       autoFocus
                     />
-                    <Text style={s.editLabel}>LOGO URL</Text>
-                    <TextInput
-                      style={s.input}
-                      value={editLogoUrl}
-                      onChangeText={setEditLogoUrl}
-                      placeholder="https://example.com/logo.png"
-                      placeholderTextColor={palette.dust}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    <Text style={s.editLabel}>ACCENT COLOR</Text>
-                    <TextInput
-                      style={s.input}
-                      value={editAccentColor}
-                      onChangeText={setEditAccentColor}
-                      placeholder="#D4884A (default amber)"
-                      placeholderTextColor={palette.dust}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    {editAccentColor ? (
-                      <View style={[s.colorPreview, { backgroundColor: editAccentColor }]} />
+                    <Text style={s.editLabel}>LOGO</Text>
+                    <TouchableOpacity style={s.logoPickerBtn} onPress={async () => {
+                      const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ["images"],
+                        allowsEditing: true,
+                        aspect: [3, 1],
+                        quality: 0.7,
+                        base64: true,
+                      });
+                      if (!result.canceled && result.assets?.[0]?.base64) {
+                        const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+                        setEditLogoUrl(b64);
+                      }
+                    }} activeOpacity={0.7}>
+                      {editLogoUrl ? (
+                        <Image source={{ uri: editLogoUrl }} style={s.logoPreview} resizeMode="contain" />
+                      ) : (
+                        <Text style={s.logoPickerText}>Tap to upload logo</Text>
+                      )}
+                    </TouchableOpacity>
+                    {editLogoUrl ? (
+                      <TouchableOpacity onPress={() => setEditLogoUrl("")} activeOpacity={0.7}>
+                        <Text style={[s.cancelText, { marginBottom: space.sm }]}>Remove logo</Text>
+                      </TouchableOpacity>
                     ) : null}
+                    <Text style={s.editLabel}>ACCENT COLOR</Text>
+                    <View style={s.swatchGrid}>
+                      {ACCENT_PRESETS.map((c) => (
+                        <TouchableOpacity
+                          key={c.hex}
+                          style={[
+                            s.swatch,
+                            { backgroundColor: c.hex },
+                            editAccentColor === c.hex && s.swatchSelected,
+                          ]}
+                          onPress={() => setEditAccentColor(editAccentColor === c.hex ? "" : c.hex)}
+                          activeOpacity={0.7}
+                        />
+                      ))}
+                    </View>
                     <View style={s.btnRow}>
                       <TouchableOpacity onPress={() => setEditingVenue(null)} activeOpacity={0.7}>
                         <Text style={s.cancelText}>Cancel</Text>
@@ -396,6 +429,15 @@ const s = StyleSheet.create({
   venueActions: { flexDirection: "row", gap: space.lg, marginTop: space.xs },
   actionText: { color: palette.amber, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
   deleteText: { color: palette.scarabRed, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
-  editLabel: { ...type.label, color: palette.dust, fontFamily: fonts.monoBold, marginTop: space.sm, marginBottom: 2 },
-  colorPreview: { width: 32, height: 32, borderRadius: 8, marginBottom: space.sm, borderWidth: 1, borderColor: palette.glassBorder },
+  editLabel: { ...type.label, color: palette.dust, fontFamily: fonts.monoBold, marginTop: space.sm, marginBottom: space.xs },
+  logoPickerBtn: {
+    borderWidth: 1, borderColor: palette.glassBorder, borderStyle: "dashed",
+    borderRadius: radius.button, height: 60, alignItems: "center", justifyContent: "center",
+    marginBottom: space.sm, overflow: "hidden",
+  },
+  logoPickerText: { color: palette.dust, fontSize: 12, fontFamily: fonts.serifItalic, fontStyle: "italic" },
+  logoPreview: { width: "100%", height: "100%" },
+  swatchGrid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginBottom: space.sm },
+  swatch: { width: 36, height: 36, borderRadius: 10, borderWidth: 2, borderColor: "transparent" },
+  swatchSelected: { borderColor: palette.papyrus, borderWidth: 3 },
 });

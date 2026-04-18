@@ -171,6 +171,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       cancelled = true;
       playerSub?.remove();
       connSub?.remove();
+      SpotifyRemote.pause().catch(() => {});
       SpotifyRemote.unsubscribeFromPlayerState().catch(() => {});
       SpotifyRemote.disconnect().catch(() => {});
     };

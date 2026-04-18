@@ -15,7 +15,7 @@ import { GlassCard, ScanLines, DotMatrix } from "./Glass";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const ALBUM_MAIN = SCREEN_WIDTH * 0.32;
 const ALBUM_SIZE = ALBUM_MAIN;
-const CARD_SPACING = 12;
+const CARD_SPACING = 16;
 const JUKEBOX_CARD_COUNT = 5;
 
 export default function LobbyScreen({ code, isHost, user, initialState, getToken, onLeave, onConnectSpotify }) {
@@ -52,6 +52,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [saved, setSaved] = useState(false);
   const [remoteConnected, setRemoteConnected] = useState(false);
   const [albumHistory, setAlbumHistory] = useState([]);
+  const [jukeboxActive, setJukeboxActive] = useState(false);
   const deckAnim = useRef(new Animated.Value(0)).current;
   const jukeboxPan = useRef(new Animated.Value(0)).current;
   const debounceRef = useRef(null);
@@ -449,10 +450,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
     onPanResponderTerminationRequest: () => false,
     onShouldBlockNativeResponder: () => true,
+    onPanResponderGrant: () => {
+      setJukeboxActive(true);
+    },
     onPanResponderMove: (_, g) => {
       jukeboxPan.setValue(g.dx);
     },
     onPanResponderRelease: (_, g) => {
+      setJukeboxActive(false);
       Animated.spring(jukeboxPan, {
         toValue: 0,
         tension: 80,
@@ -544,6 +549,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         contentContainerStyle={s.scrollContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        scrollEnabled={!jukeboxActive}
       >
         {/* Header */}
         <View style={s.header}>
@@ -598,9 +604,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               const absD = Math.abs(distFromCenter);
               const isLeft = distFromCenter < 0; // upcoming (left of center)
 
-              const baseOffsetX = isCenter ? 0 : (isLeft ? -1 : 1) * (ALBUM_MAIN * 0.62 + (absD - 1) * CARD_SPACING);
-              const baseScale = isCenter ? 1 : Math.max(0.35, 0.65 - (absD - 1) * 0.06);
-              const baseOpacity = isCenter ? 1 : Math.max(0.05, 0.50 - (absD - 1) * 0.10);
+              const baseOffsetX = isCenter ? 0 : (isLeft ? -1 : 1) * (ALBUM_MAIN * 0.68 + (absD - 1) * CARD_SPACING);
+              const baseScale = isCenter ? 1 : Math.max(0.38, 0.70 - (absD - 1) * 0.06);
+              const baseOpacity = isCenter ? 1 : Math.max(0.06, 0.55 - (absD - 1) * 0.10);
               // Left cards face right (positive rotateY), right cards face left (negative)
               // so when browsing that direction, they rotate toward you
               const baseRotateY = isCenter ? 0 : (isLeft ? 75 : -75);

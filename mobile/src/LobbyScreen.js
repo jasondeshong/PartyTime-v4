@@ -61,6 +61,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const jukeboxPan = useRef(new Animated.Value(0)).current;
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
+  const scrollRef = useRef(null);
+  const searchRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const nowPlayingRef = useRef(nowPlaying);
   const skipFiredRef = useRef(null);
@@ -617,6 +619,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       )}
 
       <ScrollView
+        ref={scrollRef}
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -870,7 +873,10 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
         {tab === "search" && (
           <View>
-            <View style={s.searchCard}>
+            <View
+              style={s.searchCard}
+              onLayout={(e) => { searchRef.current = e.nativeEvent.layout.y; }}
+            >
               <TextInput
                 style={s.searchInput}
                 placeholder="Search Spotify..."
@@ -879,6 +885,13 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 onChangeText={setSearch}
                 autoCorrect={false}
                 returnKeyType="search"
+                onFocus={() => {
+                  if (searchRef.current != null) {
+                    setTimeout(() => {
+                      scrollRef.current?.scrollTo({ y: searchRef.current - 10, animated: true });
+                    }, 300);
+                  }
+                }}
               />
             </View>
             {searching && (

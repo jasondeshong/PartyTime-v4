@@ -205,7 +205,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         if (isHost && getToken && !remoteConnected) {
           try {
             const token = await getToken();
-            if (token) await SpotifyRemote.connect(token);
+            if (token) {
+              await SpotifyRemote.connect(token);
+              setRemoteConnected(true);
+              await SpotifyRemote.subscribeToPlayerState().catch(() => {});
+            }
           } catch (e) {
             // Silent — user will see disconnected state in UI
           }
@@ -247,31 +251,49 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   async function waitForPlayerReady(retries = 3) {
     for (let i = 0; i < retries; i++) {
       try {
-        await SpotifyRemote.getPlayerState();
-        return true;
+        const state = await SpotifyRemote.getPlayerState();
+        return state;
       } catch {
         await new Promise((r) => setTimeout(r, 1000));
       }
     }
-    return false;
+    return null;
   }
 
-  async function handlePlay() {
+  async function handlePlay(forcePlay = false) {
     if (!getToken || !nowPlaying?.spotifyId) return;
     const uri = `spotify:track:${nowPlaying.spotifyId}`;
     try {
-      if (position > 0 && duration > 0 && position < duration - 1500) {
-        await SpotifyRemote.resume();
-      } else {
+      if (forcePlay) {
         await SpotifyRemote.play(uri);
+      } else {
+        // Check Spotify's actual state — don't rely on our stale position
+        const state = await SpotifyRemote.getPlayerState();
+        const spotifyUri = state?.uri || "";
+        const sameTrack = spotifyUri.includes(nowPlaying.spotifyId);
+
+        if (sameTrack && state?.isPaused) {
+          await SpotifyRemote.resume();
+        } else if (sameTrack && !state?.isPaused) {
+          // Already playing this track — do nothing
+          setIsPlaying(true);
+          return;
+        } else {
+          await SpotifyRemote.play(uri);
+        }
       }
       setIsPlaying(true);
     } catch (e1) {
       console.log("[SR] play attempt 1 failed, waiting for player ready...");
-      const ready = await waitForPlayerReady();
-      if (ready) {
+      const state = await waitForPlayerReady();
+      if (state) {
         try {
-          await SpotifyRemote.play(uri);
+          // If Spotify is already playing this track, just resume
+          if (state.uri?.includes(nowPlaying.spotifyId) && state.isPaused) {
+            await SpotifyRemote.resume();
+          } else {
+            await SpotifyRemote.play(uri);
+          }
           setIsPlaying(true);
           return;
         } catch (e2) {
@@ -292,10 +314,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     }
   }
 
-  // Auto-play when now playing changes — waits for remote to be connected
+  // Auto-play when the TRACK changes (not on reconnect to same track)
+  const lastAutoPlayRef = useRef(null);
   useEffect(() => {
     if (!isHost || !nowPlaying?.spotifyId || !getToken || !remoteConnected) return;
-    const t = setTimeout(() => handlePlay(), 2000);
+    // Only auto-play if this is a genuinely new track
+    if (lastAutoPlayRef.current === nowPlaying.spotifyId) return;
+    lastAutoPlayRef.current = nowPlaying.spotifyId;
+    const t = setTimeout(() => handlePlay(true), 2000);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId, remoteConnected]);
 

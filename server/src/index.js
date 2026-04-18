@@ -307,17 +307,19 @@ app.post("/api/auth/refresh", authLimiter, async (req, res) => {
 
 // Spotify search
 app.get("/api/spotify/search", searchLimiter, async (req, res) => {
-  const { q } = req.query;
+  const { q, noExplicit } = req.query;
   if (!q) return res.json({ tracks: [] });
 
   try {
     const token = await getSpotifyToken();
     const spotRes = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`,
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=${noExplicit === "1" ? 20 : 8}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const data = await spotRes.json();
-    const tracks = (data.tracks?.items || []).map((t) => ({
+    let items = data.tracks?.items || [];
+    if (noExplicit === "1") items = items.filter((t) => !t.explicit);
+    const tracks = items.slice(0, 8).map((t) => ({
       spotifyId: t.id,
       title: t.name,
       artist: t.artists.map((a) => a.name).join(", "),
@@ -1224,6 +1226,7 @@ async function getLobby(code) {
   let venueSlug = null;
   let venueLogoUrl = null;
   let venueAccentColor = null;
+  let venueNoExplicit = false;
   if (venueId) {
     const { data: venue } = await supabase
       .from("venues")
@@ -1235,6 +1238,7 @@ async function getLobby(code) {
       venueSlug = venue.slug;
       venueLogoUrl = venue.settings?.logoUrl || null;
       venueAccentColor = venue.settings?.accentColor || null;
+      venueNoExplicit = venue.settings?.noExplicit || false;
     }
   }
 
@@ -1245,6 +1249,7 @@ async function getLobby(code) {
     venueSlug,
     venueLogoUrl,
     venueAccentColor,
+    venueNoExplicit,
     queue: (songs || []).map((s) => ({
       id: s.id,
       spotifyId: s.spotify_id,

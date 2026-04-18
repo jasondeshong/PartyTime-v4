@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import socket from "./socket";
 import api from "./api";
 import useSpotifyPlayer from "./useSpotifyPlayer";
+import { ShenRing, Scarab } from "./Symbols";
 
 export default function Lobby({ code, isHost, user, initialState, getToken, onLeave }) {
   const [queue, setQueue] = useState(initialState?.queue || []);
@@ -322,10 +323,8 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
             {/* Controls */}
             <div className="flex items-center gap-2 mt-2">
               {!isGuest && (
-                <button onClick={saveToLibrary}
-                  className="w-9 h-9 rounded-xl border transition flex items-center justify-center text-lg"
-                  style={{ borderColor: saved ? accent : "rgba(255,255,255,0.1)", color: saved ? accent : "rgba(255,255,255,0.4)" }}>
-                  {saved ? "✓" : "+"}
+                <button onClick={saveToLibrary} className="w-9 h-9 rounded-xl border border-white/10 hover:border-white/20 transition flex items-center justify-center" title="Save to library">
+                  <ShenRing size={20} color={saved ? accent : "rgba(255,255,255,0.4)"} filled={saved} />
                 </button>
               )}
               {isHost && (

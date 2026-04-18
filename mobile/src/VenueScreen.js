@@ -35,6 +35,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
   const [editName, setEditName] = useState("");
   const [editLogoUrl, setEditLogoUrl] = useState("");
   const [editAccentColor, setEditAccentColor] = useState("");
+  const [editNoExplicit, setEditNoExplicit] = useState(false);
   const [error, setError] = useState("");
 
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -122,6 +123,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
       else delete settings.logoUrl;
       if (editAccentColor) settings.accentColor = editAccentColor;
       else delete settings.accentColor;
+      settings.noExplicit = editNoExplicit;
 
       const headers = { "Content-Type": "application/json", ...(await authHeaders()) };
       const res = await api(`/api/venues/${id}`, {
@@ -315,6 +317,21 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                         />
                       ))}
                     </View>
+                    <Text style={s.editLabel}>CONTENT</Text>
+                    <TouchableOpacity
+                      style={s.explicitRow}
+                      onPress={() => setEditNoExplicit(!editNoExplicit)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.explicitLabel}>Block Explicit Songs</Text>
+                        <Text style={s.explicitDesc}>Filter out explicit tracks from search</Text>
+                      </View>
+                      <View style={[s.toggleTrack, editNoExplicit && s.toggleTrackOn]}>
+                        <View style={[s.toggleThumb, editNoExplicit && s.toggleThumbOn]} />
+                      </View>
+                    </TouchableOpacity>
+
                     <View style={s.btnRow}>
                       <TouchableOpacity onPress={() => setEditingVenue(null)} activeOpacity={0.7}>
                         <Text style={s.cancelText}>Cancel</Text>
@@ -353,7 +370,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                       <TouchableOpacity onPress={() => onViewAnalytics(venue)} activeOpacity={0.7}>
                         <Text style={s.actionText}>Analytics</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setEditingVenue(venue.id); setEditName(venue.name); setEditLogoUrl(venue.settings?.logoUrl || ""); setEditAccentColor(venue.settings?.accentColor || ""); }} activeOpacity={0.7}>
+                      <TouchableOpacity onPress={() => { setEditingVenue(venue.id); setEditName(venue.name); setEditLogoUrl(venue.settings?.logoUrl || ""); setEditAccentColor(venue.settings?.accentColor || ""); setEditNoExplicit(venue.settings?.noExplicit || false); }} activeOpacity={0.7}>
                         <Text style={s.actionText}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => deleteVenue(venue.id, venue.name)} activeOpacity={0.7}>
@@ -434,6 +451,13 @@ const s = StyleSheet.create({
   venueActions: { flexDirection: "row", gap: space.lg, marginTop: space.xs },
   actionText: { color: palette.amber, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
   deleteText: { color: palette.scarabRed, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
+  explicitRow: { flexDirection: "row", alignItems: "center", paddingVertical: space.sm, marginBottom: space.sm },
+  explicitLabel: { color: palette.papyrus, fontSize: 14, fontFamily: fonts.mono },
+  explicitDesc: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.serifItalic, fontStyle: "italic", marginTop: 2 },
+  toggleTrack: { width: 44, height: 24, borderRadius: 12, backgroundColor: palette.groove, justifyContent: "center", paddingHorizontal: 3 },
+  toggleTrackOn: { backgroundColor: palette.spotifyGreen },
+  toggleThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: palette.dust },
+  toggleThumbOn: { backgroundColor: palette.papyrus, alignSelf: "flex-end" },
   editLabel: { ...type.label, color: palette.dust, fontFamily: fonts.monoBold, marginTop: space.sm, marginBottom: space.xs },
   logoPickerBtn: {
     borderWidth: 1, borderColor: palette.glassBorder, borderStyle: "dashed",

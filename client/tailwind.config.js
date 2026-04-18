@@ -4,13 +4,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "#0a0a0a",
-        surface: "#161616",
-        "surface-light": "#222222",
-        border: "#2a2a2a",
-        accent: "#c96442",
-        "accent-hover": "#b5573a",
+        bg: "#080808",
+        surface: "#121210",
+        "surface-light": "#1a1a18",
+        border: "#1e1e1c",
+        accent: "#D4884A",
+        "accent-hover": "#c47a3e",
         muted: "#888888",
+        papyrus: "#F0ECE4",
+        amber: "#D4884A",
+        scarab: "#E05555",
+        spotify: "#1DB954",
       },
     },
   },

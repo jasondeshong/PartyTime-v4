@@ -4,6 +4,7 @@ import socket from "./socket";
 import api from "./api";
 import Lobby from "./Lobby";
 import VenueDashboard from "./VenueDashboard";
+import { Sistrum } from "./Symbols";
 
 const LOBBY_KEY = "pt_lobby";
 const GUEST_KEY = "pt_guest";
@@ -153,7 +154,7 @@ export default function App() {
         {/* Logo mark */}
         <div className="relative z-10 mb-4">
           <div className="w-16 h-16 rounded-full border-2 border-[#D4884A]/30 flex items-center justify-center" style={{ boxShadow: "0 0 40px rgba(212,136,74,0.15)" }}>
-            <span className="text-[#D4884A] text-2xl font-bold font-mono">♫</span>
+            <Sistrum size={32} />
           </div>
         </div>
 
@@ -247,7 +248,7 @@ export default function App() {
 
       <div className="relative z-10 mb-4">
         <div className="w-16 h-16 rounded-full border-2 border-[#D4884A]/30 flex items-center justify-center" style={{ boxShadow: "0 0 40px rgba(212,136,74,0.15)" }}>
-          <span className="text-[#D4884A] text-2xl font-bold font-mono">♫</span>
+          <Sistrum size={32} />
         </div>
       </div>
 

@@ -27,6 +27,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [venueSlug] = useState(initialState?.venueSlug || null);
   const [venueLogoUrl] = useState(initialState?.venueLogoUrl || null);
   const [venueAccentColor] = useState(initialState?.venueAccentColor || null);
+  const [venueNoExplicit] = useState(initialState?.venueNoExplicit || false);
   const accent = venueAccentColor || palette.amber;
   const [showQR, setShowQR] = useState(false);
   const joinUrl = venueSlug ? `https://party-time-v4.vercel.app/${venueSlug}` : `https://party-time-v4.vercel.app/join/${code}`;
@@ -374,7 +375,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await api(`/api/spotify/search?q=${encodeURIComponent(search)}`);
+        const res = await api(`/api/spotify/search?q=${encodeURIComponent(search)}${venueNoExplicit ? "&noExplicit=1" : ""}`);
         const data = await res.json();
         setResults(data.tracks || []);
       } catch {
@@ -976,7 +977,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.obsidian },
   scroll: { flex: 1 },
-  scrollContent: { padding: space.md, paddingTop: 52 },
+  scrollContent: { padding: space.md, paddingTop: 46 },
 
   // Toast
   toast: {
@@ -986,7 +987,7 @@ const s = StyleSheet.create({
   toastText: { color: palette.papyrus, fontSize: 13, fontFamily: fonts.mono, letterSpacing: 0.3 },
 
   // Header
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.sm },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.xs },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerTitle: { color: palette.papyrus, fontSize: 18, fontFamily: fonts.monoBold, letterSpacing: 1.5 },
   venueSubtitle: { color: palette.dust, fontSize: 9, fontFamily: fonts.serifItalic, fontStyle: "italic", letterSpacing: 1, marginTop: 1 },
@@ -1009,7 +1010,7 @@ const s = StyleSheet.create({
   qrModalTap: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, marginTop: space.lg },
 
   // Users — cartouche chips
-  usersScroll: { marginBottom: space.sm, flexGrow: 0 },
+  usersScroll: { marginBottom: space.xs, flexGrow: 0 },
   usersRow: { flexDirection: "row", gap: 6, paddingRight: space.md },
   userChip: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: palette.onyx, borderRadius: radius.chip, borderWidth: 1, borderColor: palette.glassBorder },
   userChipText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 0.5 },

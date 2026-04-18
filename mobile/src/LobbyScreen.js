@@ -245,7 +245,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
         // Reconnect socket
         if (!socket.connected) socket.connect();
-        socket.emit("rejoin", code);
+        socket.emit("rejoin", { code, name: user?.name });
 
         // Always reconnect App Remote on foreground (connection may have dropped)
         if (isHost && getToken) {
@@ -391,7 +391,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     });
     socket.on("connect", () => {
       console.log("[SR] socket reconnected — rejoining lobby");
-      socket.emit("rejoin", code);
+      socket.emit("rejoin", { code, name: user?.name });
     });
 
     return () => {
@@ -489,7 +489,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   function addSong(song) {
     if (!socket.connected) {
       socket.connect();
-      socket.emit("rejoin", code);
+      socket.emit("rejoin", { code, name: user?.name });
     }
     socket.emit("add-song", { code, song });
     showToast(`Added "${song.title}"`);

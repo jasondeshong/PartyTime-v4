@@ -1557,19 +1557,23 @@ io.on("connection", (socket) => {
   });
 
   // Rejoin: re-send full lobby state (for app returning from background / socket reconnect)
-  socket.on("rejoin", async (code) => {
+  socket.on("rejoin", async (data) => {
+    const code = typeof data === "string" ? data : data?.code;
+    const name = typeof data === "object" ? data?.name : null;
     if (!code) return;
     socket.join(code);
     currentLobby = code;
+    if (name) userName = name;
 
     if (userName) {
+      if (!lobbyUsers.has(code)) lobbyUsers.set(code, []);
       const users = lobbyUsers.get(code);
-      if (users && !users.some((u) => u.id === socket.id)) {
+      if (!users.some((u) => u.id === socket.id)) {
         users.push({ id: socket.id, name: userName });
-        const hostName = lobbyHosts.get(code);
-        const usersWithHost = users.map((u) => ({ ...u, isHost: u.name === hostName }));
-        io.to(code).emit("users-updated", usersWithHost);
       }
+      const hostName = lobbyHosts.get(code);
+      const usersWithHost = users.map((u) => ({ ...u, isHost: u.name === hostName }));
+      io.to(code).emit("users-updated", usersWithHost);
     }
 
     const lobby = await getLobby(code);

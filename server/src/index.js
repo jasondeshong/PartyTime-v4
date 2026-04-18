@@ -155,6 +155,17 @@ const SPOTIFY_SCOPES = [
   "playlist-read-collaborative",
 ].join(" ");
 
+// --- Admin auth middleware ---
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "partytime-admin-2026";
+
+function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || auth !== `Bearer ${ADMIN_PASSWORD}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
+
 // --- Auth middleware: verify Spotify token and attach user email ---
 async function requireSpotifyAuth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
@@ -454,6 +465,16 @@ app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
     return res.status(400).json({ error: "Missing name or slug" });
   }
 
+  // Access gate: check how many venues this user already owns
+  const { data: existingVenues } = await supabase
+    .from("venues")
+    .select("id, settings")
+    .eq("owner_spotify_id", ownerId);
+  const hasPaid = (existingVenues || []).some((v) => v.settings?.isPaid);
+  if (!hasPaid && (existingVenues || []).length >= FREE_VENUE_LIMIT) {
+    return res.status(403).json({ error: `Free accounts can create ${FREE_VENUE_LIMIT} venue. Upgrade for unlimited venues.` });
+  }
+
   // Validate slug format: lowercase alphanumeric + hyphens
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     return res.status(400).json({ error: "Slug must be lowercase letters, numbers, and hyphens" });
@@ -700,6 +721,126 @@ app.post("/api/venues/:id/stop", requireSpotifyAuth, async (req, res) => {
 
   res.json({ active: false });
 });
+
+// --- Admin dashboard endpoints ---
+
+// Aggregate stats across all venues and users
+app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
+  try {
+    const { data: venues } = await supabase.from("venues").select("id, name, slug, owner_spotify_id, settings, lobby_code, created_at");
+    const { data: lobbies } = await supabase.from("lobbies").select("code");
+    const { data: events } = await supabase.from("analytics_events").select("event_type, payload, created_at");
+
+    const totalVenues = venues?.length || 0;
+    const paidVenues = (venues || []).filter((v) => v.settings?.isPaid).length;
+    const activeVenues = (venues || []).filter((v) => v.settings?.active).length;
+    const totalLobbies = lobbies?.length || 0;
+    const activeLobbies = lobbyUsers.size;
+
+    const allEvents = events || [];
+    const totalEvents = allEvents.length;
+    const uniqueUsers = new Set(allEvents.filter((e) => e.payload?.userName).map((e) => e.payload.userName)).size;
+    const totalSongsPlayed = allEvents.filter((e) => e.event_type === "song_played").length;
+    const totalVotes = allEvents.filter((e) => e.event_type === "vote_cast").length;
+
+    // Activity by day (last 30 days)
+    const dailyActivity = {};
+    for (const e of allEvents) {
+      const day = e.created_at?.slice(0, 10);
+      if (day) dailyActivity[day] = (dailyActivity[day] || 0) + 1;
+    }
+    const activityDays = Object.entries(dailyActivity)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-30)
+      .map(([date, count]) => ({ date, count }));
+
+    // Top venues by event count
+    const venueEvents = {};
+    for (const e of allEvents) {
+      if (e.payload?.venueId) venueEvents[e.payload.venueId] = (venueEvents[e.payload.venueId] || 0) + 1;
+    }
+
+    res.json({
+      totalVenues, paidVenues, activeVenues,
+      totalLobbies, activeLobbies,
+      totalEvents, uniqueUsers, totalSongsPlayed, totalVotes,
+      activityDays,
+      venues: (venues || []).map((v) => ({
+        id: v.id, name: v.name, slug: v.slug,
+        isPaid: v.settings?.isPaid || false,
+        isActive: v.settings?.active || false,
+        lobbyCode: v.lobby_code,
+        createdAt: v.created_at,
+        eventCount: venueEvents[v.id] || 0,
+      })),
+    });
+  } catch (err) {
+    console.error("Admin stats error:", err);
+    res.status(500).json({ error: "Failed to fetch admin stats" });
+  }
+});
+
+// Activate/deactivate a venue's paid status
+app.post("/api/admin/venues/:id/set-paid", requireAdmin, async (req, res) => {
+  const { isPaid } = req.body;
+  const { data: venue } = await supabase
+    .from("venues")
+    .select("settings")
+    .eq("id", req.params.id)
+    .single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+
+  const newSettings = { ...(venue.settings || {}), isPaid: !!isPaid };
+  await supabase.from("venues").update({ settings: newSettings }).eq("id", req.params.id);
+  res.json({ success: true, isPaid: !!isPaid });
+});
+
+// Stripe webhook — auto-activate venue on payment
+app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    const event = JSON.parse(req.body);
+
+    if (event.type === "checkout.session.completed") {
+      const venueId = event.data?.object?.metadata?.venueId;
+      if (venueId) {
+        const { data: venue } = await supabase
+          .from("venues")
+          .select("settings")
+          .eq("id", venueId)
+          .single();
+        if (venue) {
+          const newSettings = { ...(venue.settings || {}), isPaid: true };
+          await supabase.from("venues").update({ settings: newSettings }).eq("id", venueId);
+          console.log(`Stripe: activated venue ${venueId}`);
+        }
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const venueId = event.data?.object?.metadata?.venueId;
+      if (venueId) {
+        const { data: venue } = await supabase
+          .from("venues")
+          .select("settings")
+          .eq("id", venueId)
+          .single();
+        if (venue) {
+          const newSettings = { ...(venue.settings || {}), isPaid: false };
+          await supabase.from("venues").update({ settings: newSettings }).eq("id", venueId);
+          console.log(`Stripe: deactivated venue ${venueId}`);
+        }
+      }
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error("Stripe webhook error:", err);
+    res.status(400).json({ error: "Webhook failed" });
+  }
+});
+
+// --- Access gate: venue creation requires isPaid or under free limit ---
+const FREE_VENUE_LIMIT = 1;
 
 // --- Analytics helpers ---
 function toLocalDate(utcTimestamp, tz) {

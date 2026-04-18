@@ -5,6 +5,7 @@ import api from "./api";
 import Lobby from "./Lobby";
 import VenueDashboard from "./VenueDashboard";
 import { Sistrum } from "./Symbols";
+import AdminDashboard from "./AdminDashboard";
 
 const LOBBY_KEY = "pt_lobby";
 const GUEST_KEY = "pt_guest";
@@ -120,6 +121,11 @@ export default function App() {
     setUser(null);
     setMode(null);
     sessionStorage.removeItem(LOBBY_KEY);
+  }
+
+  // Admin dashboard at /admin
+  if (window.location.pathname === "/admin") {
+    return <AdminDashboard />;
   }
 
   if (loading) {

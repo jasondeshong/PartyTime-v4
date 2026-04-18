@@ -10,6 +10,7 @@ import HomeScreen from "./src/HomeScreen";
 import SettingsScreen from "./src/SettingsScreen";
 import VenueScreen from "./src/VenueScreen";
 import AnalyticsDashboard from "./src/AnalyticsDashboard";
+import MyTagScreen from "./src/MyTagScreen";
 import LobbyScreen from "./src/LobbyScreen";
 import LogoReview from "./src/LogoReview";
 import socket from "./src/socket";
@@ -31,6 +32,7 @@ export default function App() {
   const [guestUser, setGuestUser] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showVenues, setShowVenues] = useState(false);
+  const [showMyTag, setShowMyTag] = useState(false);
   const [analyticsVenue, setAnalyticsVenue] = useState(null);
   const [restoring, setRestoring] = useState(true);
   const restoredRef = useRef(false);
@@ -221,6 +223,20 @@ export default function App() {
     );
   }
 
+  // My Tag — NFC customization
+  if (showMyTag) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor="#080808" />
+        <MyTagScreen
+          user={user}
+          lobbyCode={lobby?.code}
+          onBack={() => setShowMyTag(false)}
+        />
+      </>
+    );
+  }
+
   // Venue management
   if (showVenues) {
     return (
@@ -258,6 +274,7 @@ export default function App() {
           onBack={() => setShowSettings(false)}
           onLogout={() => { setShowSettings(false); logout(); }}
           onOpenVenues={() => { setShowSettings(false); setShowVenues(true); }}
+          onOpenMyTag={() => { setShowSettings(false); setShowMyTag(true); }}
         />
       </>
     );

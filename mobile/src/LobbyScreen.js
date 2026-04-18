@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
-  KeyboardAvoidingView, PanResponder,
+  KeyboardAvoidingView, PanResponder, Modal,
 } from "react-native";
 import * as SpotifyRemote from "expo-spotify-app-remote";
+import QRCode from "react-native-qrcode-svg";
 
 import socket from "./socket";
 import api from "./api";
@@ -27,6 +28,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [venueLogoUrl] = useState(initialState?.venueLogoUrl || null);
   const [venueAccentColor] = useState(initialState?.venueAccentColor || null);
   const accent = venueAccentColor || palette.amber;
+  const [showQR, setShowQR] = useState(false);
+  const joinUrl = venueSlug ? `https://partytime.app/${venueSlug}` : `https://partytime.app/join/${code}`;
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -567,10 +570,28 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               <Text style={s.codeText}>{displayCode} <Text style={s.codeTap}>tap to copy</Text></Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onLeave}>
-            <Text style={s.leaveText}>LEAVE</Text>
-          </TouchableOpacity>
+          <View style={s.headerRight}>
+            <TouchableOpacity onPress={() => setShowQR(true)} style={s.qrThumb}>
+              <QRCode value={joinUrl} size={36} backgroundColor="transparent" color={palette.papyrus} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onLeave}>
+              <Text style={s.leaveText}>LEAVE</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Full-screen QR modal — for projecting on TV */}
+        <Modal visible={showQR} animationType="fade" transparent>
+          <TouchableOpacity style={s.qrModal} activeOpacity={1} onPress={() => setShowQR(false)}>
+            <View style={s.qrModalCard}>
+              <Text style={s.qrModalTitle}>{venueName || "PARTYTIME"}</Text>
+              <QRCode value={joinUrl} size={SCREEN_WIDTH * 0.6} backgroundColor={palette.obsidian} color={palette.papyrus} />
+              <Text style={s.qrModalCode}>{displayCode}</Text>
+              <Text style={s.qrModalHint}>Scan to join</Text>
+              <Text style={s.qrModalTap}>tap anywhere to close</Text>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Users — horizontal scroll of cartouche chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.usersScroll} contentContainerStyle={s.usersRow}>
@@ -928,7 +949,15 @@ const s = StyleSheet.create({
   guestLabel: { color: palette.sandstone, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   codeText: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 4, marginTop: space.xs },
   codeTap: { color: palette.dust },
+  headerRight: { alignItems: "flex-end", gap: space.sm },
+  qrThumb: { padding: 4, borderWidth: 1, borderColor: palette.glassBorder, borderRadius: 8 },
   leaveText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 1.5, textTransform: "uppercase" },
+  qrModal: { flex: 1, backgroundColor: "rgba(0,0,0,0.92)", justifyContent: "center", alignItems: "center" },
+  qrModalCard: { alignItems: "center", padding: space.xl },
+  qrModalTitle: { color: palette.papyrus, fontSize: 28, fontFamily: fonts.monoBold, letterSpacing: 3, marginBottom: space.lg },
+  qrModalCode: { color: palette.amber, fontSize: 18, fontFamily: fonts.mono, letterSpacing: 6, marginTop: space.lg },
+  qrModalHint: { color: palette.sandstone, fontSize: 16, fontFamily: fonts.serifItalic, fontStyle: "italic", marginTop: space.sm },
+  qrModalTap: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, marginTop: space.xl },
 
   // Users — cartouche chips
   usersScroll: { marginBottom: space.sm, flexGrow: 0 },

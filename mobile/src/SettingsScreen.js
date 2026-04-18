@@ -17,7 +17,7 @@ import { GlassCard, ExposedGrid } from "./Glass";
  */
 const GUEST_NAME_KEY = "pt_guest_name";
 
-export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues }) {
+export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues, onOpenMyTag }) {
   const [guestName, setGuestName] = useState("");
   const [editingName, setEditingName] = useState(false);
 
@@ -155,6 +155,18 @@ export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues })
                   <View style={s.prefInfo}>
                     <Text style={s.prefLabel}>Venue Management</Text>
                     <Text style={s.prefDesc}>Create and manage B2B venues</Text>
+                  </View>
+                  <Text style={s.prefChevron}>{"\u203A"}</Text>
+                </TouchableOpacity>
+                <View style={s.divider} />
+              </>
+            )}
+            {onOpenMyTag && (
+              <>
+                <TouchableOpacity style={s.prefRow} onPress={onOpenMyTag} activeOpacity={0.7}>
+                  <View style={s.prefInfo}>
+                    <Text style={s.prefLabel}>My Tag</Text>
+                    <Text style={s.prefDesc}>Set up your NFC tag</Text>
                   </View>
                   <Text style={s.prefChevron}>{"\u203A"}</Text>
                 </TouchableOpacity>

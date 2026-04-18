@@ -36,6 +36,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [playlistTracks, setPlaylistTracks] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [likedHasMore, setLikedHasMore] = useState(true);
+  const [playlistTracksHasMore, setPlaylistTracksHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   // isHost = playback control (skip, pause, App Remote)
   // hasToken = library access (liked, playlists, save)
   // A guest with Spotify connected: isHost=false, hasToken=true
@@ -333,19 +336,23 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     }, 300);
   }, [search, tab]);
 
-  async function loadLikedSongs() {
-    setLoadingLibrary(true);
+  async function loadLikedSongs(offset = 0) {
+    if (offset === 0) setLoadingLibrary(true);
+    else setLoadingMore(true);
     try {
       const token = await getToken();
-      const res = await api("/api/spotify/liked", {
+      const res = await api(`/api/spotify/liked?offset=${offset}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setLikedSongs(data.tracks || []);
+      if (offset === 0) setLikedSongs(data.tracks || []);
+      else setLikedSongs((prev) => [...prev, ...(data.tracks || [])]);
+      setLikedHasMore(data.hasMore ?? false);
     } catch {
-      setLikedSongs([]);
+      if (offset === 0) setLikedSongs([]);
     }
     setLoadingLibrary(false);
+    setLoadingMore(false);
   }
 
   async function loadPlaylists() {
@@ -363,20 +370,23 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     setLoadingLibrary(false);
   }
 
-  async function loadPlaylistTracks(playlist) {
-    setSelectedPlaylist(playlist);
-    setLoadingLibrary(true);
+  async function loadPlaylistTracks(playlist, offset = 0) {
+    if (offset === 0) { setSelectedPlaylist(playlist); setLoadingLibrary(true); }
+    else setLoadingMore(true);
     try {
       const token = await getToken();
-      const res = await api(`/api/spotify/playlists/${playlist.id}/tracks`, {
+      const res = await api(`/api/spotify/playlists/${playlist.id}/tracks?offset=${offset}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setPlaylistTracks(data.tracks || []);
+      if (offset === 0) setPlaylistTracks(data.tracks || []);
+      else setPlaylistTracks((prev) => [...prev, ...(data.tracks || [])]);
+      setPlaylistTracksHasMore(data.hasMore ?? false);
     } catch {
-      setPlaylistTracks([]);
+      if (offset === 0) setPlaylistTracks([]);
     }
     setLoadingLibrary(false);
+    setLoadingMore(false);
   }
 
   useEffect(() => {
@@ -754,9 +764,21 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             ) : likedSongs.length === 0 ? (
               <Text style={s.emptyText}>Nothing saved yet</Text>
             ) : (
-              likedSongs.map((song, i) => (
-                <SongRow key={`${song.spotifyId}-l${i}`} song={song} />
-              ))
+              <>
+                {likedSongs.map((song, i) => (
+                  <SongRow key={`${song.spotifyId}-l${i}`} song={song} />
+                ))}
+                {likedHasMore && (
+                  <TouchableOpacity
+                    style={s.loadMoreBtn}
+                    onPress={() => loadLikedSongs(likedSongs.length)}
+                    disabled={loadingMore}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.loadMoreText}>{loadingMore ? "Loading..." : "Load More"}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         )}
@@ -778,6 +800,16 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 {playlistTracks.map((song, i) => (
                   <SongRow key={`${song.spotifyId}-p${i}`} song={song} />
                 ))}
+                {playlistTracksHasMore && (
+                  <TouchableOpacity
+                    style={s.loadMoreBtn}
+                    onPress={() => loadPlaylistTracks(selectedPlaylist, playlistTracks.length)}
+                    disabled={loadingMore}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.loadMoreText}>{loadingMore ? "Loading..." : "Load More"}</Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : playlists.length === 0 ? (
               <Text style={s.emptyText}>No playlists yet</Text>
@@ -945,6 +977,12 @@ const s = StyleSheet.create({
   },
   searchingRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: space.sm },
   searchingText: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1 },
+
+  loadMoreBtn: {
+    alignItems: "center", paddingVertical: 14, marginTop: space.sm,
+    borderWidth: 1, borderColor: palette.glassBorder, borderRadius: radius.button,
+  },
+  loadMoreText: { color: palette.amber, fontSize: 12, fontFamily: fonts.monoBold, letterSpacing: 1 },
 
   // Song rows
   songRow: {

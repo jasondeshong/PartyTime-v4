@@ -209,34 +209,44 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           if (state.durationMs) setProgress(state.positionMs / state.durationMs);
         }
       } catch {}
-    }, 3000);
+    }, 500);
     return () => clearInterval(interval);
   }, [isHost, remoteConnected]);
 
-  // AppState: reconnect when returning from background
+  // AppState: reconnect everything when returning from background
   useEffect(() => {
     const sub = AppState.addEventListener("change", async (nextState) => {
       if (appStateRef.current.match(/inactive|background/) && nextState === "active") {
+        // Reconnect socket
         if (!socket.connected) socket.connect();
         socket.emit("rejoin", code);
-        // Reconnect App Remote if needed (host only)
-        if (isHost && getToken && !remoteConnected) {
+
+        // Always reconnect App Remote on foreground (connection may have dropped)
+        if (isHost && getToken) {
           try {
             const token = await getToken();
             if (token) {
-              await SpotifyRemote.connect(token);
+              // Try connecting — if already connected this is a no-op on the native side
+              await SpotifyRemote.connect(token).catch(() => {});
               setRemoteConnected(true);
               await SpotifyRemote.subscribeToPlayerState().catch(() => {});
+
+              // Sync player state immediately
+              const state = await SpotifyRemote.getPlayerState().catch(() => null);
+              if (state) {
+                setIsPlaying(!state.isPaused);
+                setDuration(state.durationMs || 0);
+                setPosition(state.positionMs || 0);
+                if (state.durationMs) setProgress(state.positionMs / state.durationMs);
+              }
             }
-          } catch (e) {
-            // Silent — user will see disconnected state in UI
-          }
+          } catch {}
         }
       }
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, [code, isHost, remoteConnected]);
+  }, [code, isHost]);
 
   // Save to library (any Spotify-connected user, not just host)
   async function saveToLibrary() {
@@ -281,30 +291,32 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   async function handlePlay(forcePlay = false) {
     if (!getToken || !nowPlaying?.spotifyId) return;
     const uri = `spotify:track:${nowPlaying.spotifyId}`;
-    try {
-      if (forcePlay) {
-        await SpotifyRemote.play(uri);
-      } else {
-        // Always try resume first — it's a no-op if not paused, and
-        // avoids restarting a track that's mid-playback
+
+    async function tryResumeThenPlay() {
+      // Always try resume first — only use play(uri) for new tracks
+      if (!forcePlay) {
         try {
           await SpotifyRemote.resume();
+          setIsPlaying(true);
+          return;
         } catch {
-          // Resume failed (not paused or not connected) — fall back to play
-          await SpotifyRemote.play(uri);
+          // Resume failed — check if we should restart or it's a new track
         }
       }
+      await SpotifyRemote.play(uri);
       setIsPlaying(true);
+    }
+
+    try {
+      await tryResumeThenPlay();
     } catch (e1) {
-      console.log("[SR] play failed, reconnecting...");
+      console.log("[SR] play failed, reconnecting...", e1?.message);
       try {
         const token = await getToken();
         await SpotifyRemote.connect(token);
         setRemoteConnected(true);
         await SpotifyRemote.subscribeToPlayerState().catch(() => {});
-        // After reconnect, try resume first
-        try { await SpotifyRemote.resume(); } catch { await SpotifyRemote.play(uri); }
-        setIsPlaying(true);
+        await tryResumeThenPlay();
       } catch (e2) {
         console.log("[SR] reconnect+play failed:", e2?.message);
         showToast("Tap play to start — Spotify is warming up");
@@ -597,18 +609,22 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         keyboardDismissMode="on-drag"
         scrollEnabled={!jukeboxActive}
       >
-        {/* Header */}
+        {/* Header + users in one compact block */}
         <View style={s.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <View style={s.titleRow}>
               <Text style={s.headerTitle}>{venueName || "PARTYTIME"}</Text>
-              {isHost ? (
-                <Text style={s.hostLabel}>HOST</Text>
-              ) : (
-                <Text style={s.guestLabel}>GUEST</Text>
-              )}
+              {isHost ? <Text style={s.hostLabel}>HOST</Text> : <Text style={s.guestLabel}>GUEST</Text>}
             </View>
             {venueName && <Text style={s.venueSubtitle}>powered by PartyTime</Text>}
+            {/* Users inline under title */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.usersScroll} contentContainerStyle={s.usersRow}>
+              {users.map((u) => (
+                <View key={u.id} style={s.userChip}>
+                  <Text style={s.userChipText}>{u.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
           </View>
           <View style={s.headerRight}>
             <View style={{ flexDirection: "row", gap: space.xs }}>
@@ -640,15 +656,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             </View>
           </TouchableOpacity>
         </Modal>
-
-        {/* Users — horizontal scroll of cartouche chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.usersScroll} contentContainerStyle={s.usersRow}>
-          {users.map((u) => (
-            <View key={u.id} style={s.userChip}>
-              <Text style={s.userChipText}>{u.name}</Text>
-            </View>
-          ))}
-        </ScrollView>
 
         {/* Now Playing — hero glass card with scan lines, overflow for rolodex */}
         <GlassCard intensity={35} borderRadius={radius.card} glow={{ ...glow.hero, shadowColor: accent }} allowOverflow noBorder style={s.nowPlaying}>
@@ -977,7 +984,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.obsidian },
   scroll: { flex: 1 },
-  scrollContent: { padding: space.md, paddingTop: 46 },
+  scrollContent: { padding: space.md, paddingTop: 42 },
 
   // Toast
   toast: {
@@ -1010,7 +1017,7 @@ const s = StyleSheet.create({
   qrModalTap: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, marginTop: space.lg },
 
   // Users — cartouche chips
-  usersScroll: { marginBottom: space.xs, flexGrow: 0 },
+  usersScroll: { marginTop: space.xs, flexGrow: 0 },
   usersRow: { flexDirection: "row", gap: 6, paddingRight: space.md },
   userChip: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: palette.onyx, borderRadius: radius.chip, borderWidth: 1, borderColor: palette.glassBorder },
   userChipText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 0.5 },

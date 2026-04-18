@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, PanResponder,
 } from "react-native";
 import * as SpotifyRemote from "expo-spotify-app-remote";
 
@@ -15,6 +15,8 @@ import { GlassCard, ScanLines, DotMatrix } from "./Glass";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const ALBUM_MAIN = SCREEN_WIDTH * 0.32;
 const ALBUM_SIZE = ALBUM_MAIN;
+const CARD_SPACING = 12;
+const JUKEBOX_CARD_COUNT = 5;
 
 export default function LobbyScreen({ code, isHost, user, initialState, getToken, onLeave, onConnectSpotify }) {
   const [queue, setQueue] = useState(initialState?.queue || []);
@@ -51,6 +53,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [remoteConnected, setRemoteConnected] = useState(false);
   const [albumHistory, setAlbumHistory] = useState([]);
   const deckAnim = useRef(new Animated.Value(0)).current;
+  const jukeboxPan = useRef(new Animated.Value(0)).current;
   const debounceRef = useRef(null);
   const toastRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
@@ -73,7 +76,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         const filtered = prev.filter((a) => a.spotifyId !== nowPlaying.spotifyId);
         return [{ spotifyId: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 8);
       });
-      // Animate the deck rotation
+      // Jukebox swap animation — slide right then spring back
+      jukeboxPan.setValue(-60);
+      Animated.spring(jukeboxPan, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
       deckAnim.setValue(0);
       Animated.spring(deckAnim, {
         toValue: 1,
@@ -417,6 +427,39 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     socket.emit("skip", code);
   }
 
+  // Jukebox carousel — combine upcoming + now playing + played into one deck
+  const jukeboxCards = useMemo(() => {
+    const upcoming = queue.slice(0, JUKEBOX_CARD_COUNT).map((s) => ({ key: `up-${s.id}`, art: s.albumArt, title: s.title, type: "upcoming" }));
+    const center = nowPlaying?.albumArt
+      ? [{ key: "now", art: nowPlaying.albumArt, title: nowPlaying.title, type: "playing" }]
+      : albumHistory[0]
+        ? [{ key: "last", art: albumHistory[0].art, title: "", type: "idle" }]
+        : [{ key: "empty", art: null, title: "", type: "empty" }];
+    const startIdx = nowPlaying ? 1 : 0;
+    const played = albumHistory.slice(startIdx, startIdx + JUKEBOX_CARD_COUNT).map((a) => ({ key: `pl-${a.spotifyId}`, art: a.art, title: "", type: "played" }));
+    return [...upcoming.reverse(), ...center, ...played];
+  }, [queue, nowPlaying, albumHistory]);
+
+  const centerIndex = useMemo(() => {
+    return jukeboxCards.findIndex((c) => c.type === "playing" || c.type === "idle" || c.type === "empty");
+  }, [jukeboxCards]);
+
+  const jukeboxPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
+    onPanResponderMove: (_, g) => {
+      jukeboxPan.setValue(g.dx);
+    },
+    onPanResponderRelease: (_, g) => {
+      Animated.spring(jukeboxPan, {
+        toValue: 0,
+        tension: 80,
+        friction: 12,
+        useNativeDriver: true,
+      }).start();
+    },
+  }), []);
+
   const displayCode = venueSlug || code;
 
   function copyCode() {
@@ -450,7 +493,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
   function QueueItem({ song, index }) {
     return (
-      <GlassCard intensity={20} borderRadius={radius.button + 2} style={s.queueItem}>
+      <View style={s.queueItem}>
         <Text style={s.queueNum}>{index + 1}</Text>
         {song.albumArt ? (
           <Image source={{ uri: song.albumArt }} style={s.songArt} />
@@ -478,7 +521,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             <Text style={s.removeText}>✕</Text>
           </TouchableOpacity>
         )}
-      </GlassCard>
+      </View>
     );
   }
 
@@ -524,9 +567,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         {/* Users — horizontal scroll of cartouche chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.usersScroll} contentContainerStyle={s.usersRow}>
           {users.map((u) => (
-            <GlassCard key={u.id} intensity={15} borderRadius={radius.chip} style={s.userChip}>
+            <View key={u.id} style={s.userChip}>
               <Text style={s.userChipText}>{u.name}</Text>
-            </GlassCard>
+            </View>
           ))}
         </ScrollView>
 
@@ -543,86 +586,58 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             </View>
           )}
 
-          {/* Album art deck — always visible */}
-          <View style={s.rolodex}>
-            {/* Upcoming (from queue) — stacked left, mirroring the right side */}
-            {queue.slice(0, 5).reverse().map((song, i) => {
-              const idx = queue.slice(0, 5).length - 1 - i;
-              const offsetX = -(ALBUM_MAIN * 0.62) - idx * 12;
-              const offsetY = 10 + idx * 3;
-              const opacity = [0.45, 0.32, 0.22, 0.12, 0.06][idx] || 0.04;
-              const scale = [0.65, 0.58, 0.52, 0.46, 0.40][idx] || 0.36;
-              return song.albumArt ? (
-                <View
-                  key={`up-${song.id}`}
-                  style={[s.rolodexCard, {
-                    zIndex: 3 - idx,
-                    opacity,
-                    transform: [
-                      { translateX: offsetX },
-                      { translateY: offsetY },
-                      { perspective: 600 },
-                      { rotateY: "78deg" },
-                      { scale },
-                    ],
-                  }]}
-                >
-                  <Image source={{ uri: song.albumArt }} style={s.rolodexImg} />
-                </View>
-              ) : null;
-            })}
+          {/* Interactive jukebox carousel */}
+          <Animated.View style={s.rolodex} {...jukeboxPanResponder.panHandlers}>
+            {jukeboxCards.map((card, i) => {
+              const distFromCenter = i - centerIndex;
+              if (!card.art) return null;
 
-            {/* Center — now playing or most recent album */}
-            {(() => {
-              const centerArt = nowPlaying?.albumArt || albumHistory[0]?.art;
-              return centerArt ? (
+              const isCenter = distFromCenter === 0;
+              const absD = Math.abs(distFromCenter);
+              const dir = distFromCenter < 0 ? 1 : -1; // left cards tilt right, right tilt left
+
+              const baseOffsetX = isCenter ? 0 : (distFromCenter > 0 ? 1 : -1) * (ALBUM_MAIN * 0.62 + (absD - 1) * CARD_SPACING);
+              const baseScale = isCenter ? 1 : Math.max(0.35, 0.65 - (absD - 1) * 0.06);
+              const baseOpacity = isCenter ? 1 : Math.max(0.05, 0.50 - (absD - 1) * 0.10);
+              const baseRotateY = isCenter ? 0 : dir * (75 + absD * 2);
+              const baseOffsetY = isCenter ? -6 : 8 + (absD - 1) * 3;
+
+              // Pan influence — cards shift and tilt as user swipes
+              const panShift = jukeboxPan.interpolate({
+                inputRange: [-200, 0, 200],
+                outputRange: [isCenter ? -40 : baseOffsetX - 20, baseOffsetX, isCenter ? 40 : baseOffsetX + 20],
+                extrapolate: "clamp",
+              });
+              const panRotate = jukeboxPan.interpolate({
+                inputRange: [-200, 0, 200],
+                outputRange: [`${baseRotateY - 8}deg`, `${baseRotateY}deg`, `${baseRotateY + 8}deg`],
+                extrapolate: "clamp",
+              });
+
+              return (
                 <Animated.View
+                  key={card.key}
                   style={[
-                    s.rolodexMain,
+                    isCenter ? s.rolodexMain : s.rolodexCard,
                     {
+                      zIndex: isCenter ? 10 : 5 - absD,
+                      opacity: isCenter ? (card.type === "idle" ? 0.5 : deckAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] })) : baseOpacity,
                       transform: [
-                        { translateY: -6 },
-                        { scale: deckAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
+                        { translateX: panShift },
+                        { translateY: baseOffsetY },
+                        { perspective: 600 },
+                        { rotateY: panRotate },
+                        { scale: isCenter ? deckAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) : baseScale },
                       ],
-                      opacity: nowPlaying ? deckAnim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }) : 0.5,
                     },
+                    isCenter && { ...glow.hero, shadowColor: accent },
                   ]}
                 >
-                  <Image source={{ uri: centerArt }} style={s.rolodexMainImg} />
+                  <Image source={{ uri: card.art }} style={isCenter ? s.rolodexMainImg : s.rolodexImg} />
                 </Animated.View>
-              ) : (
-                <View style={[s.rolodexMain, { opacity: 0.3 }]}>
-                  <View style={[s.rolodexMainImg, { backgroundColor: palette.glass }]} />
-                </View>
-              );
-            })()}
-
-            {/* Played — spines, edge-on to the right */}
-            {(albumHistory.length > 0 ? albumHistory : []).slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 5).map((album, i) => {
-              const offsetX = (ALBUM_MAIN * 0.62) + i * 12;
-              const offsetY = 10 + i * 3;
-              const opacity = [0.45, 0.32, 0.22, 0.12, 0.06][i] || 0.04;
-              const scale = [0.65, 0.58, 0.52, 0.46, 0.40][i] || 0.36;
-              return (
-                <View
-                  key={`played-${album.spotifyId}`}
-                  style={[s.rolodexCard, {
-                    zIndex: 2 - i,
-                    opacity,
-                    transform: [
-                      { translateX: offsetX },
-                      { translateY: offsetY },
-                      { perspective: 600 },
-                      { rotateY: "-78deg" },
-                      { scale },
-                    ],
-                  }]}
-                >
-                  <Image source={{ uri: album.art }} style={s.rolodexImg} />
-                </View>
               );
             })}
-          </View>
+          </Animated.View>
 
           {nowPlaying ? (
             <>
@@ -710,7 +725,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         </GlassCard>
 
         {/* Tabs — glass pill bar. Spotify-connected users get full tabs */}
-        <GlassCard intensity={20} borderRadius={radius.pill} style={s.tabs}>
+        <View style={s.tabs}>
           {(hasToken ? ["search", "liked", "playlists"] : ["search"]).map((t) => (
             <TouchableOpacity
               key={t}
@@ -722,7 +737,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               </Text>
             </TouchableOpacity>
           ))}
-        </GlassCard>
+        </View>
 
         {/* Connect Spotify banner — for guests without a token */}
         {!hasToken && onConnectSpotify && (
@@ -734,7 +749,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
         {tab === "search" && (
           <View>
-            <GlassCard intensity={15} borderRadius={radius.button} style={s.searchCard}>
+            <View style={s.searchCard}>
               <TextInput
                 style={s.searchInput}
                 placeholder="Search Spotify..."
@@ -744,7 +759,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 autoCorrect={false}
                 returnKeyType="search"
               />
-            </GlassCard>
+            </View>
             {searching && (
               <View style={s.searchingRow}>
                 <Scarab size={16} color={palette.amber} />
@@ -887,7 +902,7 @@ const s = StyleSheet.create({
   // Users — cartouche chips
   usersScroll: { marginBottom: space.sm, flexGrow: 0 },
   usersRow: { flexDirection: "row", gap: 6, paddingRight: space.md },
-  userChip: { paddingHorizontal: 10, paddingVertical: 5 },
+  userChip: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: palette.onyx, borderRadius: radius.chip, borderWidth: 1, borderColor: palette.glassBorder },
   userChipText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 0.5 },
 
   // Now Playing — hero glass card
@@ -966,6 +981,7 @@ const s = StyleSheet.create({
   // Tabs
   tabs: {
     flexDirection: "row", padding: space.xs, marginBottom: space.md - 4, gap: space.xs,
+    borderBottomWidth: 1, borderBottomColor: palette.glassBorder,
   },
   tab: { flex: 1, paddingVertical: space.sm, borderRadius: radius.button, alignItems: "center" },
   tabActive: { backgroundColor: palette.groove },
@@ -973,7 +989,7 @@ const s = StyleSheet.create({
   tabTextActive: { color: palette.papyrus },
 
   // Search
-  searchCard: { marginBottom: space.sm },
+  searchCard: { marginBottom: space.sm, borderBottomWidth: 1, borderBottomColor: palette.glassBorder },
   searchInput: {
     paddingHorizontal: space.md, paddingVertical: 12,
     color: palette.papyrus, fontSize: 14, fontFamily: fonts.serif,
@@ -1006,7 +1022,8 @@ const s = StyleSheet.create({
   queueCount: { color: palette.dust, fontSize: 10, fontFamily: fonts.mono },
   queueItem: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6,
+    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 2,
+    borderBottomWidth: 1, borderBottomColor: palette.glassBorder,
   },
   queueNum: { color: palette.dust, fontSize: 10, width: 14, textAlign: "center", fontFamily: fonts.mono },
   addedBy: { color: palette.dust, fontFamily: fonts.mono, fontSize: 10 },

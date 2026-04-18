@@ -445,8 +445,10 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   }, [jukeboxCards]);
 
   const jukeboxPanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy),
+    onPanResponderTerminationRequest: () => false,
+    onShouldBlockNativeResponder: () => true,
     onPanResponderMove: (_, g) => {
       jukeboxPan.setValue(g.dx);
     },

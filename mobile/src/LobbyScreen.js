@@ -340,6 +340,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       if (songId) setMyVotes((v) => ({ ...v, [songId]: "up" }));
     });
     socket.on("song-removed-by-votes", () => showToast("Song removed — too many downvotes"));
+    socket.on("permission-error", (msg) => { console.log("[SR] permission-error:", msg); showToast(msg); });
     socket.on("lobby-closed", () => {
       showToast("Host left — lobby closed");
       setTimeout(onLeave, 2000);
@@ -454,6 +455,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   }
 
   function skip() {
+    console.log("[SR] skip emitted for lobby:", code);
     socket.emit("skip", code);
   }
 

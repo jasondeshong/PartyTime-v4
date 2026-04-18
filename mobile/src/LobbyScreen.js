@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
-  KeyboardAvoidingView, PanResponder, Modal,
+  KeyboardAvoidingView, PanResponder, Modal, Share,
 } from "react-native";
 import * as SpotifyRemote from "expo-spotify-app-remote";
 import QRCode from "react-native-qrcode-svg";
@@ -505,6 +505,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     showToast(venueSlug ? "Link copied!" : "Code copied!");
   }
 
+  function shareLobby() {
+    Share.share({
+      message: venueName
+        ? `Join ${venueName} on PartyTime! ${joinUrl}`
+        : `Join my PartyTime lobby! Code: ${code}\n${joinUrl}`,
+    });
+  }
+
   function fmt(ms) {
     if (!ms) return "0:00";
     const min = Math.floor(ms / 60000);
@@ -599,9 +607,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             </TouchableOpacity>
           </View>
           <View style={s.headerRight}>
-            <TouchableOpacity onPress={() => setShowQR(true)} style={s.qrThumb}>
-              <QRCode value={joinUrl} size={36} backgroundColor="transparent" color={palette.papyrus} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", gap: space.xs }}>
+              <TouchableOpacity onPress={shareLobby} style={s.qrThumb}>
+                <Text style={{ color: palette.papyrus, fontSize: 18 }}>↗</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowQR(true)} style={s.qrThumb}>
+                <QRCode value={joinUrl} size={28} backgroundColor="transparent" color={palette.papyrus} />
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity onPress={onLeave}>
               <Text style={s.leaveText}>LEAVE</Text>
             </TouchableOpacity>
@@ -616,6 +629,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               <QRCode value={joinUrl} size={SCREEN_WIDTH * 0.6} backgroundColor={palette.obsidian} color={palette.papyrus} />
               <Text style={s.qrModalCode}>{displayCode}</Text>
               <Text style={s.qrModalHint}>Scan to join</Text>
+              <TouchableOpacity style={s.qrShareBtn} onPress={(e) => { e.stopPropagation(); shareLobby(); }} activeOpacity={0.8}>
+                <Text style={s.qrShareText}>Share</Text>
+              </TouchableOpacity>
               <Text style={s.qrModalTap}>tap anywhere to close</Text>
             </View>
           </TouchableOpacity>
@@ -975,8 +991,8 @@ const s = StyleSheet.create({
   venueLogo: { width: 80, height: 40 },
   hostLabel: { color: palette.amber, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
   guestLabel: { color: palette.sandstone, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 2.5, textTransform: "uppercase" },
-  codeText: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 4, marginTop: space.xs },
-  codeTap: { color: palette.dust },
+  codeText: { color: palette.sandstone, fontSize: 11, fontFamily: fonts.serif, letterSpacing: 0, marginTop: space.xs },
+  codeTap: { color: palette.dust, fontFamily: fonts.serif },
   headerRight: { alignItems: "flex-end", gap: space.sm },
   qrThumb: { padding: 4, borderWidth: 1, borderColor: palette.glassBorder, borderRadius: 8 },
   leaveText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 1.5, textTransform: "uppercase" },
@@ -985,7 +1001,9 @@ const s = StyleSheet.create({
   qrModalTitle: { color: palette.papyrus, fontSize: 28, fontFamily: fonts.monoBold, letterSpacing: 3, marginBottom: space.lg },
   qrModalCode: { color: palette.amber, fontSize: 18, fontFamily: fonts.mono, letterSpacing: 6, marginTop: space.lg },
   qrModalHint: { color: palette.sandstone, fontSize: 16, fontFamily: fonts.serifItalic, fontStyle: "italic", marginTop: space.sm },
-  qrModalTap: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, marginTop: space.xl },
+  qrShareBtn: { borderWidth: 1, borderColor: palette.amber, borderRadius: radius.button, paddingVertical: 10, paddingHorizontal: 32, marginTop: space.lg },
+  qrShareText: { color: palette.amber, fontSize: 14, fontFamily: fonts.monoBold, letterSpacing: 1 },
+  qrModalTap: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, marginTop: space.lg },
 
   // Users — cartouche chips
   usersScroll: { marginBottom: space.sm, flexGrow: 0 },

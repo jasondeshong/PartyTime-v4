@@ -11,6 +11,7 @@ import SettingsScreen from "./src/SettingsScreen";
 import VenueScreen from "./src/VenueScreen";
 import AnalyticsDashboard from "./src/AnalyticsDashboard";
 import MyTagScreen from "./src/MyTagScreen";
+import SwipeBack from "./src/SwipeBack";
 import LobbyScreen from "./src/LobbyScreen";
 import LogoReview from "./src/LogoReview";
 import socket from "./src/socket";
@@ -214,11 +215,13 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
-        <AnalyticsDashboard
-          venue={analyticsVenue}
-          getToken={getToken}
-          onBack={() => setAnalyticsVenue(null)}
-        />
+        <SwipeBack onBack={() => setAnalyticsVenue(null)}>
+          <AnalyticsDashboard
+            venue={analyticsVenue}
+            getToken={getToken}
+            onBack={() => setAnalyticsVenue(null)}
+          />
+        </SwipeBack>
       </>
     );
   }
@@ -228,11 +231,13 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
-        <MyTagScreen
-          user={user}
-          lobbyCode={lobby?.code}
-          onBack={() => setShowMyTag(false)}
-        />
+        <SwipeBack onBack={() => setShowMyTag(false)}>
+          <MyTagScreen
+            user={user}
+            lobbyCode={lobby?.code}
+            onBack={() => setShowMyTag(false)}
+          />
+        </SwipeBack>
       </>
     );
   }
@@ -242,11 +247,12 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
+        <SwipeBack onBack={() => setShowVenues(false)}>
         <VenueScreen
           user={user}
           getToken={getToken}
           onBack={() => setShowVenues(false)}
-          onViewAnalytics={(venue) => { setShowVenues(false); setAnalyticsVenue(venue); }}
+          onViewAnalytics={(venue) => setAnalyticsVenue(venue)}
           onHostLobby={(lobbyCode) => {
             setShowVenues(false);
             if (!socket.connected) socket.connect();
@@ -260,6 +266,7 @@ export default function App() {
             });
           }}
         />
+        </SwipeBack>
       </>
     );
   }
@@ -269,13 +276,15 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#080808" />
+        <SwipeBack onBack={() => setShowSettings(false)}>
         <SettingsScreen
           user={user}
           onBack={() => setShowSettings(false)}
           onLogout={() => { setShowSettings(false); logout(); }}
-          onOpenVenues={() => { setShowSettings(false); setShowVenues(true); }}
-          onOpenMyTag={() => { setShowSettings(false); setShowMyTag(true); }}
+          onOpenVenues={() => setShowVenues(true)}
+          onOpenMyTag={() => setShowMyTag(true)}
         />
+        </SwipeBack>
       </>
     );
   }

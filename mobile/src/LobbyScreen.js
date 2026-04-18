@@ -531,8 +531,10 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         </View>
 
         {/* Now Playing — hero glass card with scan lines, overflow for rolodex */}
-        <GlassCard intensity={35} borderRadius={radius.card} glow={{ ...glow.hero, shadowColor: accent }} allowOverflow style={s.nowPlaying}>
-          <ScanLines />
+        <GlassCard intensity={35} borderRadius={radius.card} glow={{ ...glow.hero, shadowColor: accent }} allowOverflow noBorder style={s.nowPlaying}>
+          <View style={[StyleSheet.absoluteFill, { borderRadius: radius.card, overflow: "hidden" }]} pointerEvents="none">
+            <ScanLines />
+          </View>
 
           {/* Venue logo */}
           {venueLogoUrl && (

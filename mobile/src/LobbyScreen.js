@@ -76,21 +76,21 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
         const filtered = prev.filter((a) => a.spotifyId !== nowPlaying.spotifyId);
         return [{ spotifyId: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 8);
       });
-      // Jukebox swap animation — slide right then spring back
-      jukeboxPan.setValue(-60);
-      Animated.spring(jukeboxPan, {
-        toValue: 0,
-        tension: 50,
-        friction: 10,
-        useNativeDriver: true,
-      }).start();
+      // Smooth jukebox swap — slide in from left, ease out
+      jukeboxPan.setValue(-80);
       deckAnim.setValue(0);
-      Animated.spring(deckAnim, {
-        toValue: 1,
-        tension: 60,
-        friction: 9,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(jukeboxPan, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(deckAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
   }, [nowPlaying?.spotifyId]);
 
@@ -448,7 +448,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
     onPanResponderMove: (_, g) => {
-      jukeboxPan.setValue(-g.dx);
+      jukeboxPan.setValue(g.dx);
     },
     onPanResponderRelease: (_, g) => {
       Animated.spring(jukeboxPan, {
@@ -594,25 +594,48 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
               const isCenter = distFromCenter === 0;
               const absD = Math.abs(distFromCenter);
-              const dir = distFromCenter < 0 ? 1 : -1; // left cards tilt right, right tilt left
+              const isLeft = distFromCenter < 0; // upcoming (left of center)
 
-              const baseOffsetX = isCenter ? 0 : (distFromCenter > 0 ? 1 : -1) * (ALBUM_MAIN * 0.62 + (absD - 1) * CARD_SPACING);
+              const baseOffsetX = isCenter ? 0 : (isLeft ? -1 : 1) * (ALBUM_MAIN * 0.62 + (absD - 1) * CARD_SPACING);
               const baseScale = isCenter ? 1 : Math.max(0.35, 0.65 - (absD - 1) * 0.06);
               const baseOpacity = isCenter ? 1 : Math.max(0.05, 0.50 - (absD - 1) * 0.10);
-              const baseRotateY = isCenter ? 0 : dir * (75 + absD * 2);
+              // Left cards face right (positive rotateY), right cards face left (negative)
+              // so when browsing that direction, they rotate toward you
+              const baseRotateY = isCenter ? 0 : (isLeft ? 75 : -75);
               const baseOffsetY = isCenter ? -6 : 8 + (absD - 1) * 3;
 
-              // Pan influence — cards shift and tilt as user swipes
+              // Pan: positive dx = drag right = reveal upcoming (left side)
+              // Cards shift right, left cards flatten to show face
               const panShift = jukeboxPan.interpolate({
                 inputRange: [-200, 0, 200],
-                outputRange: [isCenter ? -40 : baseOffsetX - 20, baseOffsetX, isCenter ? 40 : baseOffsetX + 20],
+                outputRange: [baseOffsetX - 30, baseOffsetX, baseOffsetX + 30],
                 extrapolate: "clamp",
               });
-              const panRotate = jukeboxPan.interpolate({
-                inputRange: [-200, 0, 200],
-                outputRange: [`${baseRotateY - 8}deg`, `${baseRotateY}deg`, `${baseRotateY + 8}deg`],
-                extrapolate: "clamp",
-              });
+
+              // When dragging right (positive), left cards should flatten (rotateY → 0)
+              // When dragging left (negative), right cards should flatten (rotateY → 0)
+              let panRotateOut;
+              if (isCenter) {
+                panRotateOut = jukeboxPan.interpolate({
+                  inputRange: [-150, 0, 150],
+                  outputRange: ["8deg", "0deg", "-8deg"],
+                  extrapolate: "clamp",
+                });
+              } else if (isLeft) {
+                // Upcoming: drag right (positive pan) → flatten toward 0
+                panRotateOut = jukeboxPan.interpolate({
+                  inputRange: [-100, 0, 200],
+                  outputRange: [`${baseRotateY + 10}deg`, `${baseRotateY}deg`, `${baseRotateY * 0.3}deg`],
+                  extrapolate: "clamp",
+                });
+              } else {
+                // Played: drag left (negative pan) → flatten toward 0
+                panRotateOut = jukeboxPan.interpolate({
+                  inputRange: [-200, 0, 100],
+                  outputRange: [`${baseRotateY * 0.3}deg`, `${baseRotateY}deg`, `${baseRotateY + 10}deg`],
+                  extrapolate: "clamp",
+                });
+              }
 
               return (
                 <Animated.View
@@ -625,9 +648,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                       transform: [
                         { translateX: panShift },
                         { translateY: baseOffsetY },
-                        { perspective: 600 },
-                        { rotateY: panRotate },
-                        { scale: isCenter ? deckAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) : baseScale },
+                        { perspective: 800 },
+                        { rotateY: panRotateOut },
+                        { scale: isCenter ? deckAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) : baseScale },
                       ],
                     },
                     isCenter && { ...glow.hero, shadowColor: accent },

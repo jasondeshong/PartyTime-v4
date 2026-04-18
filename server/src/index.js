@@ -768,6 +768,7 @@ app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
       venues: (venues || []).map((v) => ({
         id: v.id, name: v.name, slug: v.slug,
         ownerSpotifyId: v.owner_spotify_id || null,
+        claimCode: v.settings?.claimCode || null,
         isPaid: v.settings?.isPaid || false,
         isActive: v.settings?.active || false,
         tier: v.settings?.tier || "free",
@@ -797,9 +798,9 @@ app.post("/api/admin/venues/:id/set-paid", requireAdmin, async (req, res) => {
   res.json({ success: true, isPaid: !!isPaid });
 });
 
-// Admin: create a venue for a client
+// Admin: create a venue for a client — generates a claim code
 app.post("/api/admin/venues", requireAdmin, async (req, res) => {
-  const { name, slug, ownerSpotifyId, tier } = req.body;
+  const { name, slug } = req.body;
   if (!name || !slug) return res.status(400).json({ error: "Missing name or slug" });
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     return res.status(400).json({ error: "Slug must be lowercase letters, numbers, and hyphens" });
@@ -808,30 +809,31 @@ app.post("/api/admin/venues", requireAdmin, async (req, res) => {
   const { data: existing } = await supabase.from("venues").select("id").eq("slug", slug).single();
   if (existing) return res.status(409).json({ error: "Slug already taken" });
 
-  const code = generateCode();
-  const { error: lobbyError } = await supabase.from("lobbies").insert({ code, now_playing: null });
+  const lobbyCode = generateCode();
+  const claimCode = generateCode() + generateCode();
+  const { error: lobbyError } = await supabase.from("lobbies").insert({ code: lobbyCode, now_playing: null });
   if (lobbyError) return res.status(500).json({ error: "Failed to create lobby" });
-  lobbyUsers.set(code, []);
-  playedSongs.set(code, new Map());
+  lobbyUsers.set(lobbyCode, []);
+  playedSongs.set(lobbyCode, new Map());
 
   const { data: venue, error } = await supabase
     .from("venues")
     .insert({
       name,
       slug,
-      owner_spotify_id: ownerSpotifyId || null,
-      lobby_code: code,
-      settings: { isPaid: true, tier: tier || "pro" },
+      owner_spotify_id: null,
+      lobby_code: lobbyCode,
+      settings: { isPaid: true, claimCode },
     })
     .select()
     .single();
 
   if (error) return res.status(500).json({ error: "Failed to create venue" });
 
-  lobbyVenueMap.set(code, venue.id);
+  lobbyVenueMap.set(lobbyCode, venue.id);
   res.json({
     id: venue.id, name: venue.name, slug: venue.slug,
-    lobbyCode: code, ownerSpotifyId: ownerSpotifyId || null,
+    lobbyCode, claimCode,
   });
 });
 
@@ -844,6 +846,27 @@ app.post("/api/admin/venues/:id/set-owner", requireAdmin, async (req, res) => {
     .eq("id", req.params.id);
   if (error) return res.status(500).json({ error: "Failed to update owner" });
   res.json({ success: true });
+});
+
+// Claim a venue with a claim code — links user's Spotify account
+app.post("/api/venues/claim", requireSpotifyAuth, async (req, res) => {
+  const { claimCode } = req.body;
+  if (!claimCode) return res.status(400).json({ error: "Missing claim code" });
+
+  const { data: venues } = await supabase.from("venues").select("*");
+  const venue = (venues || []).find((v) => v.settings?.claimCode === claimCode);
+
+  if (!venue) return res.status(404).json({ error: "Invalid claim code" });
+  if (venue.owner_spotify_id) return res.status(409).json({ error: "This venue has already been claimed" });
+
+  const newSettings = { ...venue.settings };
+  delete newSettings.claimCode;
+  await supabase
+    .from("venues")
+    .update({ owner_spotify_id: req.userId, settings: newSettings })
+    .eq("id", venue.id);
+
+  res.json({ success: true, venueName: venue.name, venueSlug: venue.slug });
 });
 
 // Stripe webhook — auto-activate venue on payment

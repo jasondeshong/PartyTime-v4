@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, StyleSheet,
-  ScrollView, Animated,
+  ScrollView, Animated, Alert,
 } from "react-native";
+import api from "./api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { palette, fonts, radius, glow, space, type } from "./theme";
 import { GlassCard, ExposedGrid } from "./Glass";
@@ -17,9 +18,12 @@ import { GlassCard, ExposedGrid } from "./Glass";
  */
 const GUEST_NAME_KEY = "pt_guest_name";
 
-export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues, onOpenMyTag }) {
+export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues, onOpenMyTag, getToken, onVenueClaimed }) {
   const [guestName, setGuestName] = useState("");
   const [editingName, setEditingName] = useState(false);
+  const [claimCode, setClaimCode] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState("");
 
   // Load saved guest name
   useEffect(() => {
@@ -173,6 +177,43 @@ export default function SettingsScreen({ user, onBack, onLogout, onOpenVenues, o
                 <View style={s.divider} />
               </>
             )}
+            {!onOpenVenues && (
+              <>
+                <View style={s.divider} />
+                <View style={{ paddingVertical: space.xs }}>
+                  <Text style={s.prefLabel}>Claim a Venue</Text>
+                  <Text style={s.prefDesc}>Got a code from PartyTime? Enter it here</Text>
+                  <View style={s.claimRow}>
+                    <TextInput style={s.claimInput} value={claimCode} onChangeText={setClaimCode}
+                      placeholder="Enter claim code" placeholderTextColor={palette.dust}
+                      autoCapitalize="characters" autoCorrect={false} />
+                    <TouchableOpacity style={s.claimBtn} disabled={claiming || !claimCode.trim()}
+                      onPress={async () => {
+                        setClaiming(true); setClaimError("");
+                        try {
+                          const token = getToken ? await getToken() : null;
+                          const res = await api("/api/venues/claim", {
+                            method: "POST",
+                            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ claimCode: claimCode.trim() }),
+                          });
+                          const data = await res.json();
+                          if (res.ok) {
+                            Alert.alert("Venue Claimed!", `You now manage "${data.venueName}"`);
+                            setClaimCode("");
+                            if (onVenueClaimed) onVenueClaimed();
+                          } else { setClaimError(data.error || "Invalid code"); }
+                        } catch { setClaimError("Something went wrong"); }
+                        setClaiming(false);
+                      }} activeOpacity={0.8}>
+                      <Text style={s.claimBtnText}>{claiming ? "..." : "Claim"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {claimError ? <Text style={s.claimError}>{claimError}</Text> : null}
+                </View>
+              </>
+            )}
+            <View style={s.divider} />
             <View style={s.prefRow}>
               <View style={s.prefInfo}>
                 <Text style={s.prefLabel}>Notifications</Text>
@@ -413,6 +454,12 @@ const s = StyleSheet.create({
   },
 
   // ── Log Out ──
+  claimRow: { flexDirection: "row", gap: space.sm, marginTop: space.sm },
+  claimInput: { flex: 1, color: palette.papyrus, fontSize: 14, fontFamily: fonts.mono, borderBottomWidth: 1, borderBottomColor: palette.amber, paddingVertical: space.sm, letterSpacing: 2 },
+  claimBtn: { backgroundColor: palette.amber, borderRadius: radius.button, paddingHorizontal: space.lg, justifyContent: "center" },
+  claimBtnText: { color: palette.obsidian, fontSize: 13, fontFamily: fonts.monoBold },
+  claimError: { color: palette.scarabRed, fontSize: 11, fontFamily: fonts.mono, marginTop: space.xs },
+
   logoutBtn: {
     marginTop: space.lg,
     backgroundColor: palette.scarabRed,

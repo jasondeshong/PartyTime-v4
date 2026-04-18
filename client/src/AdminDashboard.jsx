@@ -208,10 +208,17 @@ export default function AdminDashboard() {
                   <tr key={v.id} className="border-b border-white/5 hover:bg-white/3">
                     <td className="py-3 text-sm font-mono">{v.name}</td>
                     <td className="py-3 text-xs font-mono text-[#D4884A]">/{v.slug}</td>
-                    <td className="py-3">
-                      <button onClick={() => setOwner(v.id)} className="text-xs font-mono text-white/30 hover:text-white transition" title="Click to change owner">
-                        {v.ownerSpotifyId || "—"}
-                      </button>
+                    <td className="py-3 text-xs font-mono">
+                      {v.ownerSpotifyId ? (
+                        <span className="text-white/50">{v.ownerSpotifyId}</span>
+                      ) : v.claimCode ? (
+                        <button onClick={() => { navigator.clipboard.writeText(v.claimCode); alert(`Claim code copied: ${v.claimCode}`); }}
+                          className="text-[#D4884A] hover:text-[#D4884A]/80 transition cursor-pointer" title="Click to copy claim code">
+                          {v.claimCode.slice(0, 4)}... 📋
+                        </button>
+                      ) : (
+                        <button onClick={() => setOwner(v.id)} className="text-white/20 hover:text-white transition">assign</button>
+                      )}
                     </td>
                     <td className="py-3">
                       {v.isActive ? (

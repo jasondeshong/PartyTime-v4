@@ -298,8 +298,10 @@ export default function App() {
           user={user}
           onBack={() => setShowSettings(false)}
           onLogout={() => { setShowSettings(false); logout(); }}
+          getToken={getToken}
           onOpenVenues={hasVenues ? () => setShowVenues(true) : null}
           onOpenMyTag={() => setShowMyTag(true)}
+          onVenueClaimed={() => setHasVenues(true)}
         />
         </SwipeBack>
       </>

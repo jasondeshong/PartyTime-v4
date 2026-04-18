@@ -276,49 +276,43 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     }
   }
 
-  async function waitForPlayerReady(retries = 3) {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const state = await SpotifyRemote.getPlayerState();
-        return state;
-      } catch {
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    }
-    return null;
-  }
-
-  async function handlePlay(forcePlay = false) {
+  async function handleResume() {
     if (!getToken || !nowPlaying?.spotifyId) return;
-    const uri = `spotify:track:${nowPlaying.spotifyId}`;
-
-    async function tryResumeThenPlay() {
-      // Always try resume first — only use play(uri) for new tracks
-      if (!forcePlay) {
-        try {
-          await SpotifyRemote.resume();
-          setIsPlaying(true);
-          return;
-        } catch {
-          // Resume failed — check if we should restart or it's a new track
-        }
-      }
-      await SpotifyRemote.play(uri);
-      setIsPlaying(true);
-    }
-
     try {
-      await tryResumeThenPlay();
-    } catch (e1) {
-      console.log("[SR] play failed, reconnecting...", e1?.message);
+      await SpotifyRemote.resume();
+      setIsPlaying(true);
+    } catch {
+      // Connection likely dropped — reconnect and resume
       try {
         const token = await getToken();
         await SpotifyRemote.connect(token);
         setRemoteConnected(true);
         await SpotifyRemote.subscribeToPlayerState().catch(() => {});
-        await tryResumeThenPlay();
-      } catch (e2) {
-        console.log("[SR] reconnect+play failed:", e2?.message);
+        await SpotifyRemote.resume();
+        setIsPlaying(true);
+      } catch (e) {
+        console.log("[SR] resume after reconnect failed:", e?.message);
+        showToast("Couldn't resume — try again");
+      }
+    }
+  }
+
+  async function handlePlayNewTrack() {
+    if (!getToken || !nowPlaying?.spotifyId) return;
+    const uri = `spotify:track:${nowPlaying.spotifyId}`;
+    try {
+      await SpotifyRemote.play(uri);
+      setIsPlaying(true);
+    } catch {
+      try {
+        const token = await getToken();
+        await SpotifyRemote.connect(token);
+        setRemoteConnected(true);
+        await SpotifyRemote.subscribeToPlayerState().catch(() => {});
+        await SpotifyRemote.play(uri);
+        setIsPlaying(true);
+      } catch (e) {
+        console.log("[SR] play new track failed:", e?.message);
         showToast("Tap play to start — Spotify is warming up");
       }
     }
@@ -341,7 +335,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     // Only auto-play if this is a genuinely new track
     if (lastAutoPlayRef.current === nowPlaying.spotifyId) return;
     lastAutoPlayRef.current = nowPlaying.spotifyId;
-    const t = setTimeout(() => handlePlay(true), 2000);
+    const t = setTimeout(() => handlePlayNewTrack(), 2000);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId, remoteConnected]);
 
@@ -784,7 +778,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     {isHost && (
                       <TouchableOpacity
                         style={[s.playBtn, { backgroundColor: accent }]}
-                        onPress={isPlaying ? handlePause : handlePlay}
+                        onPress={isPlaying ? handlePause : handleResume}
                         activeOpacity={0.8}
                       >
                         <Text style={s.playBtnIcon}>{isPlaying ? "||" : "\u25B6"}</Text>

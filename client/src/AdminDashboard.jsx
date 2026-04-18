@@ -11,7 +11,6 @@ export default function AdminDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSlug, setNewSlug] = useState("");
-  const [newOwner, setNewOwner] = useState("");
   const [createError, setCreateError] = useState("");
 
   async function login() {
@@ -60,11 +59,12 @@ export default function AdminDashboard() {
       const res = await api("/api/admin/venues", {
         method: "POST",
         headers: { Authorization: `Bearer ${password}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), slug: newSlug.trim().toLowerCase(), ownerSpotifyId: newOwner.trim() || null }),
+        body: JSON.stringify({ name: newName.trim(), slug: newSlug.trim().toLowerCase() }),
       });
       const data = await res.json();
       if (!res.ok) { setCreateError(data.error); return; }
-      setNewName(""); setNewSlug(""); setNewOwner(""); setShowCreate(false);
+      alert(`Venue created!\n\nClaim code: ${data.claimCode}\n\nSend this to the venue owner.`);
+      setNewName(""); setNewSlug(""); setShowCreate(false);
       refresh();
     } catch { setCreateError("Failed to create venue"); }
   }
@@ -172,12 +172,10 @@ export default function AdminDashboard() {
           {showCreate ? (
             <div className="mb-6 p-4 border border-[#D4884A]/30 rounded-xl">
               <p className="text-[10px] font-mono text-white/30 tracking-wider mb-3">NEW VENUE</p>
-              <div className="grid md:grid-cols-3 gap-3 mb-3">
+              <div className="grid md:grid-cols-2 gap-3 mb-3">
                 <input placeholder="Venue name" value={newName} onChange={(e) => { setNewName(e.target.value); setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-")); }}
                   className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none focus:border-[#D4884A]/30" />
                 <input placeholder="slug" value={newSlug} onChange={(e) => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                  className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none" />
-                <input placeholder="Owner Spotify ID (optional)" value={newOwner} onChange={(e) => setNewOwner(e.target.value)}
                   className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none" />
               </div>
               {createError && <p className="text-red-400 text-xs font-mono mb-2">{createError}</p>}

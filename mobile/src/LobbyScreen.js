@@ -736,15 +736,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                   extrapolate: "clamp",
                 });
               } else {
-                // Both sides: drag toward a card → it flattens from baseRotateY toward 0
-                // Drag away → it tilts slightly more
-                const flattenDir = isLeft ? 1 : -1; // positive pan reveals left, negative reveals right
+                // Drag toward a card → it flattens. Drag away → tilts more.
+                const flatAngle = baseRotateY * 0.15; // nearly face-on
+                const tiltAngle = baseRotateY + (isLeft ? 10 : -10); // tilts further away
                 panRotateOut = jukeboxPan.interpolate({
                   inputRange: [-panRange, 0, panRange],
                   outputRange: [
-                    `${isLeft ? baseRotateY + 8 : baseRotateY * 0.2}deg`,
+                    `${isLeft ? tiltAngle : flatAngle}deg`,
                     `${baseRotateY}deg`,
-                    `${isLeft ? baseRotateY * 0.2 : baseRotateY + 8}deg`,
+                    `${isLeft ? flatAngle : tiltAngle}deg`,
                   ],
                   extrapolate: "clamp",
                 });

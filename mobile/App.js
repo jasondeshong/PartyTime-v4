@@ -256,6 +256,7 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor="#080808" />
       <HomeScreen
         user={user}
+        getToken={getToken}
         onLogout={logout}
         onJoinLobby={handleJoinLobby}
         onOpenSettings={() => setShowSettings(true)}

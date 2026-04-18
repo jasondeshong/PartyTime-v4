@@ -13,7 +13,7 @@ import { ShenRing, Scarab } from "./Symbols";
 import { GlassCard, ScanLines, DotMatrix } from "./Glass";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const ALBUM_MAIN = SCREEN_WIDTH * 0.40;
+const ALBUM_MAIN = SCREEN_WIDTH * 0.32;
 const ALBUM_SIZE = ALBUM_MAIN;
 
 export default function LobbyScreen({ code, isHost, user, initialState, getToken, onLeave, onConnectSpotify }) {
@@ -826,7 +826,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.obsidian },
   scroll: { flex: 1 },
-  scrollContent: { padding: space.md, paddingTop: 60 },
+  scrollContent: { padding: space.md, paddingTop: 52 },
 
   // Toast
   toast: {
@@ -836,7 +836,7 @@ const s = StyleSheet.create({
   toastText: { color: palette.papyrus, fontSize: 13, fontFamily: fonts.mono, letterSpacing: 0.3 },
 
   // Header
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.md },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.sm },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerTitle: { color: palette.papyrus, fontSize: 18, fontFamily: fonts.monoBold, letterSpacing: 1.5 },
   venueSubtitle: { color: palette.dust, fontSize: 9, fontFamily: fonts.serifItalic, fontStyle: "italic", letterSpacing: 1, marginTop: 1 },
@@ -855,14 +855,14 @@ const s = StyleSheet.create({
 
   // Now Playing — hero glass card
   nowPlaying: {
-    padding: space.lg - 4, marginBottom: space.lg - 4,
+    padding: space.md, marginBottom: space.sm,
   },
 
   // Rolodex
   rolodex: {
-    height: ALBUM_SIZE + 16,
+    height: ALBUM_SIZE + 12,
     alignItems: "center", justifyContent: "center",
-    marginBottom: space.md, overflow: "visible",
+    marginBottom: space.sm, overflow: "visible",
   },
   rolodexMain: {
     width: ALBUM_SIZE, height: ALBUM_SIZE,
@@ -883,21 +883,21 @@ const s = StyleSheet.create({
   },
 
   // Track info
-  npInfo: { alignItems: "center", marginBottom: space.xs },
-  npLabel: { color: palette.amber, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 3, marginBottom: 6, textTransform: "uppercase" },
-  npTitle: { color: palette.papyrus, fontSize: 17, fontWeight: "700", textAlign: "center" },
-  npArtist: { color: palette.sandstone, fontSize: 14, marginTop: 2, textAlign: "center", fontFamily: fonts.serif },
-  npAddedBy: { color: palette.dust, fontSize: 11, marginTop: space.xs, fontFamily: fonts.mono, letterSpacing: 0.5 },
+  npInfo: { alignItems: "center", marginBottom: 2 },
+  npLabel: { color: palette.amber, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 3, marginBottom: 3, textTransform: "uppercase" },
+  npTitle: { color: palette.papyrus, fontSize: 15, fontWeight: "700", textAlign: "center" },
+  npArtist: { color: palette.sandstone, fontSize: 13, marginTop: 1, textAlign: "center", fontFamily: fonts.serif },
+  npAddedBy: { color: palette.dust, fontSize: 10, marginTop: 2, fontFamily: fonts.mono, letterSpacing: 0.5 },
 
   // Save — shen ring with label
-  saveRow: { alignItems: "center", marginTop: space.sm, marginBottom: space.xs },
+  saveRow: { alignItems: "center", marginTop: space.xs, marginBottom: 2 },
   saveBtn: { alignItems: "center", gap: 4 },
   saveLabel: { color: palette.dust, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 1.5, textTransform: "uppercase" },
   saveLabelSaved: { color: palette.amber },
 
   // Player
-  playerControls: { marginTop: space.md - 4 },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: space.sm, marginBottom: space.md - 4 },
+  playerControls: { marginTop: space.xs },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: space.sm, marginBottom: space.xs },
   progressRowGuest: { marginTop: space.md - 4, paddingHorizontal: 12 },
   progressTime: { color: palette.dust, fontSize: 9, fontFamily: fonts.mono, width: 32, textAlign: "center" },
   progressTrack: { flex: 1, height: 3, backgroundColor: palette.groove, borderRadius: 2, overflow: "hidden" },

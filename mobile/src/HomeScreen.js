@@ -21,11 +21,26 @@ const { height: SCREEN_H } = Dimensions.get("window");
  *
  * Same spatial hierarchy as Artifact's login screen.
  */
-export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings }) {
+export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings, getToken }) {
   const [lobbyCode, setLobbyCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const toastRef = useRef(null);
+  const [activeVenues, setActiveVenues] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getToken ? await getToken() : null;
+        if (!token) return;
+        const res = await api("/api/venues/by-owner", { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const venues = await res.json();
+          setActiveVenues(venues.filter((v) => v.settings?.active && v.lobbyCode));
+        }
+      } catch {}
+    })();
+  }, []);
 
   // Entrance animations
   const logoFade = useRef(new Animated.Value(0)).current;
@@ -158,6 +173,31 @@ export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings
             </TouchableOpacity>
           </View>
         </Animated.View>
+
+        {/* Active venue lobbies — rejoin */}
+        {activeVenues.length > 0 && (
+          <View style={s.activeVenues}>
+            {activeVenues.map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={s.activeVenueCard}
+                onPress={() => {
+                  if (!socket.connected) socket.connect();
+                  socket.emit("join-lobby", { code: v.lobbyCode, name: user.name });
+                  socket.once("lobby-state", (state) => {
+                    onJoinLobby({ code: v.lobbyCode, isHost: true, initialState: state });
+                  });
+                  socket.once("error", () => socket.disconnect());
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={s.activeVenueDot} />
+                <Text style={s.activeVenueName}>{v.name}</Text>
+                <Text style={s.activeVenueAction}>REJOIN</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* ── Bottom section: Signed-in bar ── */}
@@ -291,4 +331,13 @@ const s = StyleSheet.create({
     fontFamily: fonts.mono,
     textDecorationLine: "underline",
   },
+  activeVenues: { marginTop: space.lg, gap: space.sm },
+  activeVenueCard: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: palette.onyx, borderWidth: 1, borderColor: palette.glassBright,
+    borderRadius: radius.button, paddingVertical: 12, paddingHorizontal: space.md,
+  },
+  activeVenueDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#1DB954", marginRight: space.sm },
+  activeVenueName: { flex: 1, color: palette.papyrus, fontSize: 14, fontFamily: fonts.monoBold },
+  activeVenueAction: { color: palette.amber, fontSize: 10, fontFamily: fonts.monoBold, letterSpacing: 2 },
 });

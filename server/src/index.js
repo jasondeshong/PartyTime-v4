@@ -872,6 +872,151 @@ app.post("/api/venues/claim", requireSpotifyAuth, async (req, res) => {
   res.json({ success: true, venueName: venue.name, venueSlug: venue.slug });
 });
 
+// Admin: delete a venue
+app.delete("/api/admin/venues/:id", requireAdmin, async (req, res) => {
+  const { data: venue } = await supabase.from("venues").select("lobby_code").eq("id", req.params.id).single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+
+  if (venue.lobby_code) {
+    io.to(venue.lobby_code).emit("lobby-closed");
+    lobbyUsers.delete(venue.lobby_code);
+    lobbyHosts.delete(venue.lobby_code);
+    playedSongs.delete(venue.lobby_code);
+    lobbyVenueMap.delete(venue.lobby_code);
+    await supabase.from("queue").delete().eq("lobby_code", venue.lobby_code);
+    await supabase.from("lobbies").delete().eq("code", venue.lobby_code);
+  }
+  await supabase.from("analytics_events").delete().eq("venue_id", req.params.id);
+  await supabase.from("venues").delete().eq("id", req.params.id);
+  res.json({ success: true });
+});
+
+// Admin: suspend/unsuspend a venue
+app.post("/api/admin/venues/:id/suspend", requireAdmin, async (req, res) => {
+  const { suspended } = req.body;
+  const { data: venue } = await supabase.from("venues").select("settings").eq("id", req.params.id).single();
+  if (!venue) return res.status(404).json({ error: "Venue not found" });
+  const newSettings = { ...(venue.settings || {}), suspended: !!suspended };
+  await supabase.from("venues").update({ settings: newSettings }).eq("id", req.params.id);
+  res.json({ success: true, suspended: !!suspended });
+});
+
+// Admin: get full analytics for a specific venue (same as owner sees)
+app.get("/api/admin/venues/:id/analytics", requireAdmin, async (req, res) => {
+  const venueId = req.params.id;
+  const since = req.query.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const tz = req.query.tz || "America/Chicago";
+
+  try {
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("event_type, payload, created_at")
+      .eq("venue_id", venueId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+
+    const allEvents = events || [];
+    const uniqueUsers = new Set(allEvents.filter((e) => e.payload?.userName).map((e) => e.payload.userName)).size;
+    const songsPlayed = allEvents.filter((e) => e.event_type === "song_played").length;
+    const totalVotes = allEvents.filter((e) => e.event_type === "vote_cast").length;
+    const totalSkips = allEvents.filter((e) => e.event_type === "song_skipped").length;
+    const totalAdds = allEvents.filter((e) => e.event_type === "song_added").length;
+
+    // Peak hours
+    const hours = new Array(24).fill(0);
+    for (const e of allEvents) {
+      const h = parseInt(new Date(e.created_at).toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: tz }));
+      hours[h]++;
+    }
+    const peakHours = hours.map((count, h) => {
+      const ampm = h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
+      return { hour: ampm, count };
+    });
+
+    // Top songs
+    const songCounts = {};
+    for (const e of allEvents.filter((e) => ["song_played", "song_added"].includes(e.event_type))) {
+      const k = e.payload?.spotifyId;
+      if (!k) continue;
+      if (!songCounts[k]) songCounts[k] = { spotifyId: k, title: e.payload.title || "?", artist: e.payload.artist || "?", count: 0 };
+      songCounts[k].count++;
+    }
+    const topSongs = Object.values(songCounts).sort((a, b) => b.count - a.count).slice(0, 20);
+
+    // Daily activity
+    const daily = {};
+    for (const e of allEvents) {
+      const day = toLocalDate(e.created_at, tz);
+      if (!daily[day]) daily[day] = 0;
+      daily[day]++;
+    }
+    const activityDays = Object.entries(daily).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
+
+    // Recent events
+    const recentEvents = allEvents.slice(-50).reverse().map((e) => ({
+      type: e.event_type,
+      user: e.payload?.userName || e.payload?.addedBy || "",
+      title: e.payload?.title || "",
+      time: e.created_at,
+    }));
+
+    res.json({
+      overview: { songsPlayed, uniqueUsers, totalVotes, totalSkips, totalAdds, totalEvents: allEvents.length },
+      peakHours,
+      topSongs,
+      activityDays,
+      recentEvents,
+    });
+  } catch (err) {
+    console.error("Admin venue analytics error:", err);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+// Admin: platform-wide trending songs
+app.get("/api/admin/trending", requireAdmin, async (_req, res) => {
+  try {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: events } = await supabase
+      .from("analytics_events")
+      .select("payload")
+      .in("event_type", ["song_played", "song_added"])
+      .gte("created_at", since);
+
+    const counts = {};
+    for (const e of events || []) {
+      const k = e.payload?.spotifyId;
+      if (!k) continue;
+      if (!counts[k]) counts[k] = { spotifyId: k, title: e.payload.title || "?", artist: e.payload.artist || "?", count: 0 };
+      counts[k].count++;
+    }
+    const trending = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 30);
+    res.json({ trending });
+  } catch { res.status(500).json({ error: "Failed" }); }
+});
+
+// Admin: real-time platform snapshot
+app.get("/api/admin/live", requireAdmin, async (_req, res) => {
+  const activeLobbies = [];
+  for (const [code, users] of lobbyUsers.entries()) {
+    if (users.length > 0) {
+      activeLobbies.push({
+        code,
+        userCount: users.length,
+        users: users.map((u) => u.name),
+        host: lobbyHosts.get(code) || null,
+        venueId: lobbyVenueMap.get(code) || null,
+      });
+    }
+  }
+  res.json({
+    totalConnections: io.engine?.clientsCount || 0,
+    activeLobbies,
+    lobbyCount: activeLobbies.length,
+    totalUsers: activeLobbies.reduce((sum, l) => sum + l.userCount, 0),
+  });
+});
+
 // Stripe webhook — auto-activate venue on payment
 app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
   try {

@@ -2,8 +2,13 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Image, FlatList, ScrollView,
   StyleSheet, Clipboard, Dimensions, AppState, Platform, Animated,
-  KeyboardAvoidingView, PanResponder, Modal, Share,
+  KeyboardAvoidingView, PanResponder, Modal, Share, LayoutAnimation,
+  UIManager,
 } from "react-native";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import * as SpotifyRemote from "expo-spotify-app-remote";
 import QRCode from "react-native-qrcode-svg";
 
@@ -79,22 +84,32 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     setSaved(false);
     skipFiredRef.current = null;
     if (nowPlaying?.albumArt) {
+      // Trigger smooth layout transition for all card repositioning
+      LayoutAnimation.configureNext({
+        duration: 600,
+        create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+        update: { type: LayoutAnimation.Types.easeInEaseOut },
+        delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      });
+
       setAlbumHistory((prev) => {
         const filtered = prev.filter((a) => a.spotifyId !== nowPlaying.spotifyId);
         return [{ spotifyId: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 8);
       });
-      // Smooth jukebox swap — slide in from left, ease out
-      jukeboxPan.setValue(-80);
+
+      // Vinyl-smooth slide: the whole deck drifts from left
+      jukeboxPan.setValue(-60);
       deckAnim.setValue(0);
       Animated.parallel([
         Animated.timing(jukeboxPan, {
           toValue: 0,
-          duration: 500,
+          duration: 700,
           useNativeDriver: true,
         }),
         Animated.timing(deckAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 600,
+          delay: 100,
           useNativeDriver: true,
         }),
       ]).start();
@@ -525,10 +540,9 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     },
     onPanResponderRelease: (_, g) => {
       setJukeboxActive(false);
-      Animated.spring(jukeboxPan, {
+      Animated.timing(jukeboxPan, {
         toValue: 0,
-        tension: 80,
-        friction: 12,
+        duration: 400,
         useNativeDriver: true,
       }).start();
     },
@@ -705,35 +719,33 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               const baseRotateY = isCenter ? 0 : (isLeft ? 75 : -75);
               const baseOffsetY = isCenter ? -6 : 8 + (absD - 1) * 3;
 
-              // Pan: positive dx = drag right = reveal upcoming (left side)
-              // Cards shift right, left cards flatten to show face
+              // Pan influence — symmetric for both sides
+              const panRange = 180;
               const panShift = jukeboxPan.interpolate({
-                inputRange: [-200, 0, 200],
-                outputRange: [baseOffsetX - 30, baseOffsetX, baseOffsetX + 30],
+                inputRange: [-panRange, 0, panRange],
+                outputRange: [baseOffsetX - 25, baseOffsetX, baseOffsetX + 25],
                 extrapolate: "clamp",
               });
 
-              // When dragging right (positive), left cards should flatten (rotateY → 0)
-              // When dragging left (negative), right cards should flatten (rotateY → 0)
+              // Rotation: cards flatten (face you) when you drag toward them
               let panRotateOut;
               if (isCenter) {
                 panRotateOut = jukeboxPan.interpolate({
-                  inputRange: [-150, 0, 150],
-                  outputRange: ["8deg", "0deg", "-8deg"],
-                  extrapolate: "clamp",
-                });
-              } else if (isLeft) {
-                // Upcoming: drag right (positive pan) → flatten toward 0
-                panRotateOut = jukeboxPan.interpolate({
-                  inputRange: [-100, 0, 200],
-                  outputRange: [`${baseRotateY + 10}deg`, `${baseRotateY}deg`, `${baseRotateY * 0.3}deg`],
+                  inputRange: [-panRange, 0, panRange],
+                  outputRange: ["6deg", "0deg", "-6deg"],
                   extrapolate: "clamp",
                 });
               } else {
-                // Played: drag left (negative pan) → flatten toward 0
+                // Both sides: drag toward a card → it flattens from baseRotateY toward 0
+                // Drag away → it tilts slightly more
+                const flattenDir = isLeft ? 1 : -1; // positive pan reveals left, negative reveals right
                 panRotateOut = jukeboxPan.interpolate({
-                  inputRange: [-200, 0, 100],
-                  outputRange: [`${baseRotateY * 0.3}deg`, `${baseRotateY}deg`, `${baseRotateY + 10}deg`],
+                  inputRange: [-panRange, 0, panRange],
+                  outputRange: [
+                    `${isLeft ? baseRotateY + 8 : baseRotateY * 0.2}deg`,
+                    `${baseRotateY}deg`,
+                    `${isLeft ? baseRotateY * 0.2 : baseRotateY + 8}deg`,
+                  ],
                   extrapolate: "clamp",
                 });
               }

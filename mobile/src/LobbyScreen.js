@@ -361,7 +361,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     // Only auto-play if this is a genuinely new track
     if (lastAutoPlayRef.current === nowPlaying.spotifyId) return;
     lastAutoPlayRef.current = nowPlaying.spotifyId;
-    const t = setTimeout(() => handlePlayNewTrack(), 2000);
+    const t = setTimeout(() => handlePlayNewTrack(), 500);
     return () => clearTimeout(t);
   }, [nowPlaying?.spotifyId, remoteConnected]);
 

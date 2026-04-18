@@ -638,6 +638,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                     </View>
                   )}
                   <View style={s.controlsRow}>
+                    {hasToken && (
+                      <TouchableOpacity
+                        style={s.saveControlBtn}
+                        onPress={saveToLibrary}
+                        activeOpacity={0.7}
+                      >
+                        <ShenRing size={18} color={saved ? accent : palette.sandstone} filled={saved} />
+                      </TouchableOpacity>
+                    )}
                     {isHost && (
                       <TouchableOpacity
                         style={[s.playBtn, { backgroundColor: accent }]}
@@ -654,15 +663,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                         activeOpacity={0.7}
                       >
                         <Text style={s.skipControlText}>{"\u25B6\u25B6"}</Text>
-                      </TouchableOpacity>
-                    )}
-                    {hasToken && (
-                      <TouchableOpacity
-                        style={s.saveControlBtn}
-                        onPress={saveToLibrary}
-                        activeOpacity={0.7}
-                      >
-                        <ShenRing size={18} color={saved ? accent : palette.sandstone} filled={saved} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -903,8 +903,8 @@ const s = StyleSheet.create({
   progressFill: { height: "100%", backgroundColor: palette.amber, borderRadius: 2 },
   controlsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   playBtn: {
-    backgroundColor: palette.amber, borderRadius: radius.button,
-    paddingVertical: 10, paddingHorizontal: 28, alignItems: "center",
+    flex: 1, backgroundColor: palette.amber, borderRadius: radius.button,
+    paddingVertical: 10, alignItems: "center",
     ...glow.button,
   },
   playBtnIcon: { color: palette.obsidian, fontSize: 14, fontWeight: "700" },

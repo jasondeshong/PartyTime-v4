@@ -625,44 +625,46 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
                 )}
               </View>
 
-              {/* Save to library — any Spotify-connected user */}
-              {hasToken && (
-                <View style={s.saveRow}>
-                  <TouchableOpacity onPress={saveToLibrary} activeOpacity={0.7}>
-                    <ShenRing
-                      size={32}
-                      color={saved ? accent : palette.sandstone}
-                      filled={saved}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Player controls — host only */}
-              {nowPlaying.spotifyId && isHost && (
+              {/* Player controls + save — single compact row */}
+              {nowPlaying.spotifyId && (
                 <View style={s.playerControls}>
-                  <View style={s.progressRow}>
-                    <Text style={s.progressTime}>{fmt(position)}</Text>
-                    <View style={s.progressTrack}>
-                      <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: accent }]} />
+                  {isHost && (
+                    <View style={s.progressRow}>
+                      <Text style={s.progressTime}>{fmt(position)}</Text>
+                      <View style={s.progressTrack}>
+                        <View style={[s.progressFill, { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: accent }]} />
+                      </View>
+                      <Text style={s.progressTime}>{fmt(duration)}</Text>
                     </View>
-                    <Text style={s.progressTime}>{fmt(duration)}</Text>
-                  </View>
+                  )}
                   <View style={s.controlsRow}>
-                    <TouchableOpacity
-                      style={s.playBtn}
-                      onPress={isPlaying ? handlePause : handlePlay}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={s.playBtnIcon}>{isPlaying ? "||" : "\u25B6"}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.skipControlBtn}
-                      onPress={skip}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={s.skipControlText}>{"\u25B6\u25B6"}</Text>
-                    </TouchableOpacity>
+                    {isHost && (
+                      <TouchableOpacity
+                        style={[s.playBtn, { backgroundColor: accent }]}
+                        onPress={isPlaying ? handlePause : handlePlay}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={s.playBtnIcon}>{isPlaying ? "||" : "\u25B6"}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {isHost && (
+                      <TouchableOpacity
+                        style={s.skipControlBtn}
+                        onPress={skip}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={s.skipControlText}>{"\u25B6\u25B6"}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {hasToken && (
+                      <TouchableOpacity
+                        style={s.saveControlBtn}
+                        onPress={saveToLibrary}
+                        activeOpacity={0.7}
+                      >
+                        <ShenRing size={18} color={saved ? accent : palette.sandstone} filled={saved} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               )}
@@ -889,11 +891,8 @@ const s = StyleSheet.create({
   npArtist: { color: palette.sandstone, fontSize: 13, marginTop: 1, textAlign: "center", fontFamily: fonts.serif },
   npAddedBy: { color: palette.dust, fontSize: 10, marginTop: 2, fontFamily: fonts.mono, letterSpacing: 0.5 },
 
-  // Save — shen ring with label
-  saveRow: { alignItems: "center", marginTop: space.xs, marginBottom: 2 },
-  saveBtn: { alignItems: "center", gap: 4 },
+  // Save (kept for potential reuse)
   saveLabel: { color: palette.dust, fontSize: 9, fontFamily: fonts.mono, letterSpacing: 1.5, textTransform: "uppercase" },
-  saveLabelSaved: { color: palette.amber },
 
   // Player
   playerControls: { marginTop: space.xs },
@@ -902,18 +901,22 @@ const s = StyleSheet.create({
   progressTime: { color: palette.dust, fontSize: 9, fontFamily: fonts.mono, width: 32, textAlign: "center" },
   progressTrack: { flex: 1, height: 3, backgroundColor: palette.groove, borderRadius: 2, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: palette.amber, borderRadius: 2 },
-  controlsRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  controlsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   playBtn: {
-    flex: 1, backgroundColor: palette.amber, borderRadius: radius.button,
-    paddingVertical: 12, alignItems: "center",
+    backgroundColor: palette.amber, borderRadius: radius.button,
+    paddingVertical: 10, paddingHorizontal: 28, alignItems: "center",
     ...glow.button,
   },
-  playBtnIcon: { color: palette.papyrus, fontSize: 16, fontWeight: "700" },
+  playBtnIcon: { color: palette.obsidian, fontSize: 14, fontWeight: "700" },
   skipControlBtn: {
     backgroundColor: palette.groove, borderRadius: radius.button,
-    paddingVertical: 12, paddingHorizontal: 20, alignItems: "center",
+    paddingVertical: 10, paddingHorizontal: 16, alignItems: "center",
   },
   skipControlText: { color: palette.sandstone, fontSize: 12 },
+  saveControlBtn: {
+    backgroundColor: palette.groove, borderRadius: radius.button,
+    paddingVertical: 10, paddingHorizontal: 16, alignItems: "center",
+  },
 
   // Empty state
   npEmpty: { alignItems: "center", paddingVertical: space.lg, overflow: "hidden" },

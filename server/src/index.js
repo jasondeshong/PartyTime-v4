@@ -821,14 +821,17 @@ app.post("/api/admin/venues", requireAdmin, async (req, res) => {
     .insert({
       name,
       slug,
-      owner_spotify_id: null,
+      owner_spotify_id: "unclaimed",
       lobby_code: lobbyCode,
       settings: { isPaid: true, claimCode },
     })
     .select()
     .single();
 
-  if (error) return res.status(500).json({ error: "Failed to create venue" });
+  if (error) {
+    console.error("Admin venue creation error:", error);
+    return res.status(500).json({ error: `Venue insert failed: ${error.message || error.code}` });
+  }
 
   lobbyVenueMap.set(lobbyCode, venue.id);
   res.json({
@@ -857,13 +860,13 @@ app.post("/api/venues/claim", requireSpotifyAuth, async (req, res) => {
   const venue = (venues || []).find((v) => v.settings?.claimCode === claimCode);
 
   if (!venue) return res.status(404).json({ error: "Invalid claim code" });
-  if (venue.owner_spotify_id) return res.status(409).json({ error: "This venue has already been claimed" });
+  if (venue.owner_spotify_id && venue.owner_spotify_id !== "unclaimed") {
+    return res.status(409).json({ error: "This venue has already been claimed" });
+  }
 
-  const newSettings = { ...venue.settings };
-  delete newSettings.claimCode;
   await supabase
     .from("venues")
-    .update({ owner_spotify_id: req.userId, settings: newSettings })
+    .update({ owner_spotify_id: req.userId })
     .eq("id", venue.id);
 
   res.json({ success: true, venueName: venue.name, venueSlug: venue.slug });

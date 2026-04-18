@@ -195,6 +195,7 @@ export default function AdminDashboard() {
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">NAME</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">SLUG</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">OWNER</th>
+                  <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">CLAIM CODE</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">STATUS</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">EVENTS</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">CREATED</th>
@@ -207,15 +208,18 @@ export default function AdminDashboard() {
                     <td className="py-3 text-sm font-mono">{v.name}</td>
                     <td className="py-3 text-xs font-mono text-[#D4884A]">/{v.slug}</td>
                     <td className="py-3 text-xs font-mono">
-                      {v.ownerSpotifyId ? (
-                        <span className="text-white/50">{v.ownerSpotifyId}</span>
-                      ) : v.claimCode ? (
-                        <button onClick={() => { navigator.clipboard.writeText(v.claimCode); alert(`Claim code copied: ${v.claimCode}`); }}
-                          className="text-[#D4884A] hover:text-[#D4884A]/80 transition cursor-pointer" title="Click to copy claim code">
-                          {v.claimCode.slice(0, 4)}... 📋
-                        </button>
+                      {v.ownerSpotifyId && v.ownerSpotifyId !== "unclaimed" ? (
+                        <span className="text-[#1DB954]">✓ {v.ownerSpotifyId}</span>
                       ) : (
-                        <button onClick={() => setOwner(v.id)} className="text-white/20 hover:text-white transition">assign</button>
+                        <span className="text-white/30">unclaimed</span>
+                      )}
+                    </td>
+                    <td className="py-3 text-xs font-mono">
+                      {v.claimCode && (
+                        <button onClick={() => { navigator.clipboard.writeText(v.claimCode); }}
+                          className="text-[#D4884A] hover:text-[#D4884A]/80 transition cursor-pointer" title="Click to copy">
+                          {v.claimCode} 📋
+                        </button>
                       )}
                     </td>
                     <td className="py-3">

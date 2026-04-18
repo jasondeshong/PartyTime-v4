@@ -53,10 +53,10 @@ export default function AnalyticsDashboard({ venue, getToken, onBack }) {
           "genre-trends", "songs-played", "session-duration",
           "retention", "engagement", "crowd-timeline", "queue-health",
         ];
+        const tzParam = `tz=${encodeURIComponent(DEVICE_TZ)}`;
         const results = await Promise.all(
           endpoints.map((e) => {
-            const qs = e === "peak-hours" ? `?tz=${encodeURIComponent(DEVICE_TZ)}` : "";
-            return api(`/api/venues/${venue.id}/analytics/${e}${qs}`, { headers }).then((r) => r.ok ? r.json() : null);
+            return api(`/api/venues/${venue.id}/analytics/${e}?${tzParam}`, { headers }).then((r) => r.ok ? r.json() : null);
           })
         );
         if (cancelled) return;

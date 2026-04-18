@@ -699,6 +699,11 @@ app.post("/api/venues/:id/stop", requireSpotifyAuth, async (req, res) => {
   res.json({ active: false });
 });
 
+// --- Analytics helpers ---
+function toLocalDate(utcTimestamp, tz) {
+  return new Date(utcTimestamp).toLocaleDateString("en-CA", { timeZone: tz });
+}
+
 // --- Analytics query endpoints (B2B) ---
 
 async function requireVenueOwner(req, res, next) {
@@ -804,10 +809,11 @@ app.get("/api/venues/:id/analytics/participation", requireSpotifyAuth, requireVe
 
     if (error) throw error;
 
-    // Group by day
+    // Group by day (local timezone)
+    const tz = req.query.tz || "America/Chicago";
     const daily = {};
     for (const e of events) {
-      const day = e.created_at.split("T")[0];
+      const day = toLocalDate(e.created_at, tz);
       if (!daily[day]) daily[day] = { joins: 0, leaves: 0, uniqueUsers: new Set() };
       if (e.event_type === "user_joined") {
         daily[day].joins++;
@@ -1002,10 +1008,11 @@ app.get("/api/venues/:id/analytics/retention", requireSpotifyAuth, requireVenueO
     const firstSeen = {};
     const dayData = {};
 
+    const tz = req.query.tz || "America/Chicago";
     for (const e of events || []) {
       const name = e.payload?.userName;
       if (!name) continue;
-      const day = e.created_at.slice(0, 10);
+      const day = toLocalDate(e.created_at, tz);
       if (!firstSeen[name]) firstSeen[name] = day;
       if (!dayData[day]) dayData[day] = { newUsers: 0, returning: 0 };
       if (firstSeen[name] === day) dayData[day].newUsers++;
@@ -1086,10 +1093,15 @@ app.get("/api/venues/:id/analytics/crowd-timeline", requireSpotifyAuth, requireV
       .gte("created_at", since)
       .order("created_at", { ascending: true });
 
+    const tz = req.query.tz || "America/Chicago";
     const buckets = {};
     for (const e of events || []) {
       const d = new Date(e.created_at);
-      const key = `${d.toISOString().slice(0, 10)} ${String(d.getUTCHours()).padStart(2, "0")}:${d.getUTCMinutes() < 15 ? "00" : d.getUTCMinutes() < 30 ? "15" : d.getUTCMinutes() < 45 ? "30" : "45"}`;
+      const localDate = toLocalDate(e.created_at, tz);
+      const localHour = parseInt(d.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: tz }));
+      const localMin = parseInt(d.toLocaleString("en-US", { minute: "numeric", timeZone: tz }));
+      const bucket = localMin < 15 ? "00" : localMin < 30 ? "15" : localMin < 45 ? "30" : "45";
+      const key = `${localDate} ${String(localHour).padStart(2, "0")}:${bucket}`;
       if (!buckets[key]) buckets[key] = { time: key, joins: 0, leaves: 0, userCount: 0 };
       if (e.event_type === "user_joined") buckets[key].joins++;
       else buckets[key].leaves++;

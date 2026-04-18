@@ -68,7 +68,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     if (nowPlaying?.albumArt) {
       setAlbumHistory((prev) => {
         const filtered = prev.filter((a) => a.spotifyId !== nowPlaying.spotifyId);
-        return [{ spotifyId: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 5);
+        return [{ spotifyId: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 8);
       });
       // Animate the deck rotation
       deckAnim.setValue(0);
@@ -534,12 +534,12 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           {/* Album art deck — always visible */}
           <View style={s.rolodex}>
             {/* Upcoming (from queue) — stacked left, mirroring the right side */}
-            {queue.slice(0, 3).reverse().map((song, i) => {
-              const idx = 2 - i;
-              const offsetX = -(ALBUM_MAIN * 0.58) - idx * 14;
-              const offsetY = 18 + idx * 4;
-              const opacity = [0.35, 0.2, 0.1][idx] || 0.06;
-              const scale = [0.48, 0.42, 0.36][idx] || 0.32;
+            {queue.slice(0, 5).reverse().map((song, i) => {
+              const idx = queue.slice(0, 5).length - 1 - i;
+              const offsetX = -(ALBUM_MAIN * 0.58) - idx * 12;
+              const offsetY = 16 + idx * 3;
+              const opacity = [0.4, 0.28, 0.18, 0.10, 0.05][idx] || 0.04;
+              const scale = [0.48, 0.42, 0.37, 0.33, 0.29][idx] || 0.26;
               return song.albumArt ? (
                 <View
                   key={`up-${song.id}`}
@@ -586,11 +586,11 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             })()}
 
             {/* Played — spines, edge-on to the right */}
-            {(albumHistory.length > 0 ? albumHistory : []).slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 3).map((album, i) => {
-              const offsetX = (ALBUM_MAIN * 0.58) + i * 14;
-              const offsetY = 18 + i * 4;
-              const opacity = [0.35, 0.2, 0.1][i] || 0.06;
-              const scale = [0.48, 0.42, 0.36][i] || 0.32;
+            {(albumHistory.length > 0 ? albumHistory : []).slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 5).map((album, i) => {
+              const offsetX = (ALBUM_MAIN * 0.58) + i * 12;
+              const offsetY = 16 + i * 3;
+              const opacity = [0.4, 0.28, 0.18, 0.10, 0.05][i] || 0.04;
+              const scale = [0.48, 0.42, 0.37, 0.33, 0.29][i] || 0.26;
               return (
                 <View
                   key={`played-${album.spotifyId}`}

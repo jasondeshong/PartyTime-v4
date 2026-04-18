@@ -229,7 +229,7 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                 autoFocus
               />
               <View style={s.slugRow}>
-                <Text style={s.slugPrefix}>partytime.app/</Text>
+                <Text style={s.slugPrefix}>party-time-v4.vercel.app/</Text>
                 <TextInput
                   style={[s.input, s.slugInput]}
                   value={slug}

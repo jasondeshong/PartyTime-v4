@@ -97,7 +97,7 @@ export default function MyTagScreen({ user, lobbyCode, onBack }) {
   function getPayload() {
     switch (mode) {
       case "lobby":
-        return `https://partytime.app/join/${lobbyCode || "NEW"}`;
+        return `https://party-time-v4.vercel.app/join/${lobbyCode || "NEW"}`;
       case "wifi":
         return `WIFI:T:${wifiEncryption};S:${wifiName};P:${wifiPassword};;`;
       case "social":
@@ -209,7 +209,7 @@ export default function MyTagScreen({ user, lobbyCode, onBack }) {
         return (
           <View style={s.detailCard}>
             <Text style={s.detailLabel}>People who tap will join:</Text>
-            <Text style={s.detailValue}>partytime.app/join/{lobbyCode || "your-next-lobby"}</Text>
+            <Text style={s.detailValue}>party-time-v4.vercel.app/join/{lobbyCode || "your-next-lobby"}</Text>
             <Text style={s.detailHint}>Creates automatically when you start a lobby</Text>
           </View>
         );

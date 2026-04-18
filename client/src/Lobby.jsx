@@ -13,7 +13,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [venueLogoUrl] = useState(initialState?.venueLogoUrl || null);
   const accent = venueAccentColor || "#D4884A";
   const displayCode = venueSlug || code;
-  const joinUrl = venueSlug ? `https://partytime.app/${venueSlug}` : `https://partytime.app/join/${code}`;
+  const joinUrl = venueSlug ? `https://party-time-v4.vercel.app/${venueSlug}` : `https://party-time-v4.vercel.app/join/${code}`;
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
@@ -22,6 +22,7 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
   const [myVotes, setMyVotes] = useState({});
   const [toast, setToast] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [albumHistory, setAlbumHistory] = useState([]);
   const isGuest = !getToken;
   const [tab, setTab] = useState("search");
   const [likedSongs, setLikedSongs] = useState([]);
@@ -63,6 +64,12 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
 
   useEffect(() => {
     setSaved(false);
+    if (nowPlaying?.albumArt) {
+      setAlbumHistory((prev) => {
+        const filtered = prev.filter((a) => a.id !== nowPlaying.spotifyId);
+        return [{ id: nowPlaying.spotifyId, art: nowPlaying.albumArt }, ...filtered].slice(0, 8);
+      });
+    }
   }, [nowPlaying?.spotifyId]);
 
   useEffect(() => {
@@ -266,37 +273,64 @@ export default function Lobby({ code, isHost, user, initialState, getToken, onLe
       {/* Now Playing */}
       <div className="mb-4">
         {nowPlaying ? (
-          <div className="bg-[#121210] border border-white/8 rounded-2xl p-4">
-            <div className="flex items-start gap-3 mb-3">
-              {nowPlaying.albumArt && (
-                <img src={nowPlaying.albumArt} alt="" className="w-16 h-16 rounded-xl shadow-lg flex-shrink-0" />
+          <div className="bg-[#121210] border border-white/8 rounded-2xl p-4 overflow-visible">
+            {/* Jukebox carousel */}
+            <div className="relative flex items-center justify-center h-32 mb-3 overflow-visible" style={{ perspective: "800px" }}>
+              {/* Upcoming — left */}
+              {queue.slice(0, 3).reverse().map((song, i) => {
+                const idx = Math.min(queue.length, 3) - 1 - i;
+                if (!song.albumArt) return null;
+                return (
+                  <img key={`up-${song.id}`} src={song.albumArt} alt=""
+                    className="absolute w-24 h-24 rounded-xl"
+                    style={{
+                      transform: `translateX(${-90 - idx * 16}px) translateY(${8 + idx * 3}px) rotateY(75deg) scale(${0.65 - idx * 0.06})`,
+                      opacity: 0.45 - idx * 0.12,
+                      zIndex: 3 - idx,
+                    }}
+                  />
+                );
+              })}
+              {/* Center */}
+              {(nowPlaying?.albumArt || albumHistory[0]?.art) && (
+                <img src={nowPlaying?.albumArt || albumHistory[0]?.art} alt=""
+                  className="relative w-28 h-28 rounded-xl z-10 transition-all duration-500"
+                  style={{ boxShadow: `0 8px 32px ${accent}40`, opacity: nowPlaying ? 1 : 0.5 }}
+                />
               )}
-              <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-mono tracking-[0.2em] mb-1" style={{ color: accent }}>NOW PLAYING</p>
-                <p className="text-white font-semibold truncate text-[15px]">{nowPlaying.title}</p>
-                <p className="text-white/50 text-sm truncate italic">{nowPlaying.artist}</p>
-                {nowPlaying.addedBy && <p className="text-white/20 text-[11px] font-mono mt-0.5">queued by {nowPlaying.addedBy}</p>}
-              </div>
+              {/* Played — right */}
+              {albumHistory.slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 3).map((album, i) => (
+                <img key={`pl-${album.id}`} src={album.art} alt=""
+                  className="absolute w-24 h-24 rounded-xl"
+                  style={{
+                    transform: `translateX(${90 + i * 16}px) translateY(${8 + i * 3}px) rotateY(-75deg) scale(${0.65 - i * 0.06})`,
+                    opacity: 0.45 - i * 0.12,
+                    zIndex: 2 - i,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Track info */}
+            <div className="text-center mb-2">
+              <p className="text-[9px] font-mono tracking-[0.2em] mb-1" style={{ color: accent }}>NOW PLAYING</p>
+              <p className="text-white font-semibold truncate text-[15px]">{nowPlaying.title}</p>
+              <p className="text-white/50 text-sm truncate italic">{nowPlaying.artist}</p>
+              {nowPlaying.addedBy && <p className="text-white/20 text-[11px] font-mono mt-0.5">queued by {nowPlaying.addedBy}</p>}
             </div>
 
             {/* Controls */}
             <div className="flex items-center gap-2 mt-2">
               {!isGuest && (
-                <button
-                  onClick={saveToLibrary}
+                <button onClick={saveToLibrary}
                   className="w-9 h-9 rounded-xl border transition flex items-center justify-center text-lg"
-                  style={{ borderColor: saved ? accent : "rgba(255,255,255,0.1)", color: saved ? accent : "rgba(255,255,255,0.4)" }}
-                  title="Save to library"
-                >
+                  style={{ borderColor: saved ? accent : "rgba(255,255,255,0.1)", color: saved ? accent : "rgba(255,255,255,0.4)" }}>
                   {saved ? "✓" : "+"}
                 </button>
               )}
               {isHost && (
-                <button
-                  onClick={skip}
-                  className="flex-1 py-2 rounded-xl font-mono text-sm tracking-wider transition hover:opacity-80"
-                  style={{ backgroundColor: accent, color: "#080808" }}
-                >
+                <button onClick={skip} className="flex-1 py-2 rounded-xl font-mono text-sm tracking-wider transition hover:opacity-80"
+                  style={{ backgroundColor: accent, color: "#080808" }}>
                   Skip ▶▶
                 </button>
               )}

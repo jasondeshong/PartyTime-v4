@@ -1292,6 +1292,14 @@ io.on("connection", (socket) => {
 
     if (!lobbyUsers.has(code)) lobbyUsers.set(code, []);
     const users = lobbyUsers.get(code);
+
+    // B2C lobby limit: 10 users for free lobbies, unlimited for venues
+    const FREE_LOBBY_LIMIT = 10;
+    if (!venueId && !users.some((u) => u.id === socket.id) && users.length >= FREE_LOBBY_LIMIT) {
+      socket.emit("error", `This lobby is full (${FREE_LOBBY_LIMIT} people max). Upgrade to a venue for unlimited.`);
+      return;
+    }
+
     if (!users.some((u) => u.id === socket.id)) {
       users.push({ id: socket.id, name });
     }

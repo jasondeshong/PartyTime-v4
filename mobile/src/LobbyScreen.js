@@ -29,7 +29,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const [venueAccentColor] = useState(initialState?.venueAccentColor || null);
   const accent = venueAccentColor || palette.amber;
   const [showQR, setShowQR] = useState(false);
-  const joinUrl = venueSlug ? `https://partytime.app/${venueSlug}` : `https://partytime.app/join/${code}`;
+  const joinUrl = venueSlug ? `https://party-time-v4.vercel.app/${venueSlug}` : `https://party-time-v4.vercel.app/join/${code}`;
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -195,6 +195,23 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     };
   }, [isHost]);
 
+  // Poll player state as fallback — catches dropped listener connections
+  useEffect(() => {
+    if (!isHost || !remoteConnected) return;
+    const interval = setInterval(async () => {
+      try {
+        const state = await SpotifyRemote.getPlayerState();
+        if (state) {
+          setIsPlaying(!state.isPaused);
+          setDuration(state.durationMs || 0);
+          setPosition(state.positionMs || 0);
+          if (state.durationMs) setProgress(state.positionMs / state.durationMs);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isHost, remoteConnected]);
+
   // AppState: reconnect when returning from background
   useEffect(() => {
     const sub = AppState.addEventListener("change", async (nextState) => {
@@ -267,40 +284,30 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       if (forcePlay) {
         await SpotifyRemote.play(uri);
       } else {
-        // Check Spotify's actual state — don't rely on our stale position
-        const state = await SpotifyRemote.getPlayerState();
-        const spotifyUri = state?.uri || "";
-        const sameTrack = spotifyUri.includes(nowPlaying.spotifyId);
-
-        if (sameTrack && state?.isPaused) {
+        // Always try resume first — it's a no-op if not paused, and
+        // avoids restarting a track that's mid-playback
+        try {
           await SpotifyRemote.resume();
-        } else if (sameTrack && !state?.isPaused) {
-          // Already playing this track — do nothing
-          setIsPlaying(true);
-          return;
-        } else {
+        } catch {
+          // Resume failed (not paused or not connected) — fall back to play
           await SpotifyRemote.play(uri);
         }
       }
       setIsPlaying(true);
     } catch (e1) {
-      console.log("[SR] play attempt 1 failed, waiting for player ready...");
-      const state = await waitForPlayerReady();
-      if (state) {
-        try {
-          // If Spotify is already playing this track, just resume
-          if (state.uri?.includes(nowPlaying.spotifyId) && state.isPaused) {
-            await SpotifyRemote.resume();
-          } else {
-            await SpotifyRemote.play(uri);
-          }
-          setIsPlaying(true);
-          return;
-        } catch (e2) {
-          console.log("[SR] play attempt 2 failed:", e2?.message);
-        }
+      console.log("[SR] play failed, reconnecting...");
+      try {
+        const token = await getToken();
+        await SpotifyRemote.connect(token);
+        setRemoteConnected(true);
+        await SpotifyRemote.subscribeToPlayerState().catch(() => {});
+        // After reconnect, try resume first
+        try { await SpotifyRemote.resume(); } catch { await SpotifyRemote.play(uri); }
+        setIsPlaying(true);
+      } catch (e2) {
+        console.log("[SR] reconnect+play failed:", e2?.message);
+        showToast("Tap play to start — Spotify is warming up");
       }
-      showToast("Tap play to start — Spotify is warming up");
     }
   }
 
@@ -501,16 +508,15 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
   const displayCode = venueSlug || code;
 
   function copyCode() {
-    Clipboard.setString(venueSlug ? `partytime.app/${venueSlug}` : code);
+    Clipboard.setString(venueSlug ? `party-time-v4.vercel.app/${venueSlug}` : code);
     showToast(venueSlug ? "Link copied!" : "Code copied!");
   }
 
   function shareLobby() {
-    Share.share({
-      message: venueName
-        ? `Join ${venueName} on PartyTime! ${joinUrl}`
-        : `Join my PartyTime lobby! Code: ${code}\n${joinUrl}`,
-    });
+    const msg = venueName
+      ? `Join ${venueName} on PartyTime! ${joinUrl}`
+      : `Join my PartyTime lobby! Code: ${code}\n${joinUrl}`;
+    Share.share({ message: msg, url: joinUrl });
   }
 
   function fmt(ms) {
@@ -602,9 +608,6 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
               )}
             </View>
             {venueName && <Text style={s.venueSubtitle}>powered by PartyTime</Text>}
-            <TouchableOpacity onPress={copyCode}>
-              <Text style={s.codeText}>{displayCode} <Text style={s.codeTap}>tap to copy</Text></Text>
-            </TouchableOpacity>
           </View>
           <View style={s.headerRight}>
             <View style={{ flexDirection: "row", gap: space.xs }}>

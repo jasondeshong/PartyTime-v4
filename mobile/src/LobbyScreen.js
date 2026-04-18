@@ -973,7 +973,8 @@ const s = StyleSheet.create({
   searchCard: { marginBottom: space.sm },
   searchInput: {
     paddingHorizontal: space.md, paddingVertical: 12,
-    color: palette.papyrus, fontSize: 14, fontFamily: fonts.mono,
+    color: palette.papyrus, fontSize: 14, fontFamily: fonts.serif,
+    letterSpacing: 0,
   },
   searchingRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: space.sm },
   searchingText: { color: palette.dust, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1 },

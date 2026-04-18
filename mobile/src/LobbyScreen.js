@@ -448,7 +448,7 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
     onPanResponderMove: (_, g) => {
-      jukeboxPan.setValue(g.dx);
+      jukeboxPan.setValue(-g.dx);
     },
     onPanResponderRelease: (_, g) => {
       Animated.spring(jukeboxPan, {
@@ -989,7 +989,10 @@ const s = StyleSheet.create({
   tabTextActive: { color: palette.papyrus },
 
   // Search
-  searchCard: { marginBottom: space.sm, borderBottomWidth: 1, borderBottomColor: palette.glassBorder },
+  searchCard: {
+    marginBottom: space.sm, backgroundColor: palette.onyx,
+    borderWidth: 1, borderColor: palette.glassBorder, borderRadius: radius.button,
+  },
   searchInput: {
     paddingHorizontal: space.md, paddingVertical: 12,
     color: palette.papyrus, fontSize: 14, fontFamily: fonts.serif,

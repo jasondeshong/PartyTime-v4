@@ -6,7 +6,8 @@ import {
 import { palette, fonts, radius, glow, space, type } from "./theme";
 import { GlassCard, ExposedGrid } from "./Glass";
 import { ShenRing } from "./Symbols";
-import * as ImagePicker from "expo-image-picker";
+let ImagePicker = null;
+try { ImagePicker = require("expo-image-picker"); } catch {}
 import api from "./api";
 
 const ACCENT_PRESETS = [
@@ -272,6 +273,10 @@ export default function VenueScreen({ user, getToken, onBack, onViewAnalytics, o
                     />
                     <Text style={s.editLabel}>LOGO</Text>
                     <TouchableOpacity style={s.logoPickerBtn} onPress={async () => {
+                      if (!ImagePicker) {
+                        Alert.alert("Rebuild required", "Logo upload needs a dev client rebuild with expo-image-picker");
+                        return;
+                      }
                       const result = await ImagePicker.launchImageLibraryAsync({
                         mediaTypes: ["images"],
                         allowsEditing: true,

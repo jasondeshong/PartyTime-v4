@@ -171,7 +171,8 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
       cancelled = true;
       playerSub?.remove();
       connSub?.remove();
-      SpotifyRemote.pause().catch(() => {});
+      // Don't pause — let current song finish naturally in Spotify.
+      // When host rejoins, App Remote reconnects and auto-play resumes.
       SpotifyRemote.unsubscribeFromPlayerState().catch(() => {});
       SpotifyRemote.disconnect().catch(() => {});
     };

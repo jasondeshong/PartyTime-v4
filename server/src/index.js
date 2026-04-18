@@ -472,7 +472,7 @@ app.post("/api/venues", requireSpotifyAuth, async (req, res) => {
     .eq("owner_spotify_id", ownerId);
   const hasPaid = (existingVenues || []).some((v) => v.settings?.isPaid);
   if (!hasPaid && (existingVenues || []).length >= FREE_VENUE_LIMIT) {
-    return res.status(403).json({ error: `Free accounts can create ${FREE_VENUE_LIMIT} venue. Upgrade for unlimited venues.` });
+    return res.status(403).json({ error: "Venue creation is managed by PartyTime. Contact us to set up your venue." });
   }
 
   // Validate slug format: lowercase alphanumeric + hyphens
@@ -767,8 +767,10 @@ app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
       activityDays,
       venues: (venues || []).map((v) => ({
         id: v.id, name: v.name, slug: v.slug,
+        ownerSpotifyId: v.owner_spotify_id || null,
         isPaid: v.settings?.isPaid || false,
         isActive: v.settings?.active || false,
+        tier: v.settings?.tier || "free",
         lobbyCode: v.lobby_code,
         createdAt: v.created_at,
         eventCount: venueEvents[v.id] || 0,
@@ -793,6 +795,55 @@ app.post("/api/admin/venues/:id/set-paid", requireAdmin, async (req, res) => {
   const newSettings = { ...(venue.settings || {}), isPaid: !!isPaid };
   await supabase.from("venues").update({ settings: newSettings }).eq("id", req.params.id);
   res.json({ success: true, isPaid: !!isPaid });
+});
+
+// Admin: create a venue for a client
+app.post("/api/admin/venues", requireAdmin, async (req, res) => {
+  const { name, slug, ownerSpotifyId, tier } = req.body;
+  if (!name || !slug) return res.status(400).json({ error: "Missing name or slug" });
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return res.status(400).json({ error: "Slug must be lowercase letters, numbers, and hyphens" });
+  }
+
+  const { data: existing } = await supabase.from("venues").select("id").eq("slug", slug).single();
+  if (existing) return res.status(409).json({ error: "Slug already taken" });
+
+  const code = generateCode();
+  const { error: lobbyError } = await supabase.from("lobbies").insert({ code, now_playing: null });
+  if (lobbyError) return res.status(500).json({ error: "Failed to create lobby" });
+  lobbyUsers.set(code, []);
+  playedSongs.set(code, new Map());
+
+  const { data: venue, error } = await supabase
+    .from("venues")
+    .insert({
+      name,
+      slug,
+      owner_spotify_id: ownerSpotifyId || null,
+      lobby_code: code,
+      settings: { isPaid: true, tier: tier || "pro" },
+    })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: "Failed to create venue" });
+
+  lobbyVenueMap.set(code, venue.id);
+  res.json({
+    id: venue.id, name: venue.name, slug: venue.slug,
+    lobbyCode: code, ownerSpotifyId: ownerSpotifyId || null,
+  });
+});
+
+// Admin: update venue owner (associate a Spotify account)
+app.post("/api/admin/venues/:id/set-owner", requireAdmin, async (req, res) => {
+  const { ownerSpotifyId } = req.body;
+  const { error } = await supabase
+    .from("venues")
+    .update({ owner_spotify_id: ownerSpotifyId || null })
+    .eq("id", req.params.id);
+  if (error) return res.status(500).json({ error: "Failed to update owner" });
+  res.json({ success: true });
 });
 
 // Stripe webhook — auto-activate venue on payment
@@ -840,7 +891,7 @@ app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), asyn
 });
 
 // --- Access gate: venue creation requires isPaid or under free limit ---
-const FREE_VENUE_LIMIT = 1;
+const FREE_VENUE_LIMIT = 0;
 
 // --- Analytics helpers ---
 function toLocalDate(utcTimestamp, tz) {

@@ -15,6 +15,7 @@ import SwipeBack from "./src/SwipeBack";
 import LobbyScreen from "./src/LobbyScreen";
 import LogoReview from "./src/LogoReview";
 import socket from "./src/socket";
+import api from "./src/api";
 
 // ── Set to true to show logo options review screen ──
 const SHOW_LOGO_REVIEW = false;
@@ -35,8 +36,24 @@ export default function App() {
   const [showVenues, setShowVenues] = useState(false);
   const [showMyTag, setShowMyTag] = useState(false);
   const [analyticsVenue, setAnalyticsVenue] = useState(null);
+  const [hasVenues, setHasVenues] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const restoredRef = useRef(false);
+
+  // Check if user owns any venues
+  useEffect(() => {
+    if (!isLoggedIn || !getToken) return;
+    (async () => {
+      try {
+        const token = await getToken();
+        const res = await api("/api/venues/by-owner", { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const venues = await res.json();
+          setHasVenues(venues.length > 0);
+        }
+      } catch {}
+    })();
+  }, [isLoggedIn]);
 
   // Clear stored lobby when server says it's dead
   useEffect(() => {
@@ -281,7 +298,7 @@ export default function App() {
           user={user}
           onBack={() => setShowSettings(false)}
           onLogout={() => { setShowSettings(false); logout(); }}
-          onOpenVenues={() => setShowVenues(true)}
+          onOpenVenues={hasVenues ? () => setShowVenues(true) : null}
           onOpenMyTag={() => setShowMyTag(true)}
         />
         </SwipeBack>

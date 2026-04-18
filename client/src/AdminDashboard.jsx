@@ -8,6 +8,11 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newSlug, setNewSlug] = useState("");
+  const [newOwner, setNewOwner] = useState("");
+  const [createError, setCreateError] = useState("");
 
   async function login() {
     setLoading(true);
@@ -44,6 +49,33 @@ export default function AdminDashboard() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ isPaid: !currentlyPaid }),
+    });
+    refresh();
+  }
+
+  async function createVenue() {
+    if (!newName.trim() || !newSlug.trim()) { setCreateError("Name and slug required"); return; }
+    setCreateError("");
+    try {
+      const res = await api("/api/admin/venues", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${password}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), slug: newSlug.trim().toLowerCase(), ownerSpotifyId: newOwner.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setCreateError(data.error); return; }
+      setNewName(""); setNewSlug(""); setNewOwner(""); setShowCreate(false);
+      refresh();
+    } catch { setCreateError("Failed to create venue"); }
+  }
+
+  async function setOwner(venueId) {
+    const spotifyId = prompt("Enter client's Spotify ID (or leave empty to remove):");
+    if (spotifyId === null) return;
+    await api(`/api/admin/venues/${venueId}/set-owner`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${password}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerSpotifyId: spotifyId || null }),
     });
     refresh();
   }
@@ -136,12 +168,35 @@ export default function AdminDashboard() {
 
         {/* Venue management */}
         <Section title="VENUES">
+          {/* Create venue form */}
+          {showCreate ? (
+            <div className="mb-6 p-4 border border-[#D4884A]/30 rounded-xl">
+              <p className="text-[10px] font-mono text-white/30 tracking-wider mb-3">NEW VENUE</p>
+              <div className="grid md:grid-cols-3 gap-3 mb-3">
+                <input placeholder="Venue name" value={newName} onChange={(e) => { setNewName(e.target.value); setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-")); }}
+                  className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none focus:border-[#D4884A]/30" />
+                <input placeholder="slug" value={newSlug} onChange={(e) => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                  className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none" />
+                <input placeholder="Owner Spotify ID (optional)" value={newOwner} onChange={(e) => setNewOwner(e.target.value)}
+                  className="bg-[#080808] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 font-mono focus:outline-none" />
+              </div>
+              {createError && <p className="text-red-400 text-xs font-mono mb-2">{createError}</p>}
+              <div className="flex gap-3">
+                <button onClick={createVenue} className="px-6 py-2 rounded-lg text-sm font-mono font-semibold text-[#080808] hover:opacity-90" style={{ backgroundColor: "#D4884A" }}>Create</button>
+                <button onClick={() => setShowCreate(false)} className="text-white/30 text-sm font-mono hover:text-white">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowCreate(true)} className="mb-4 text-[#D4884A] text-xs font-mono border border-[#D4884A]/30 border-dashed rounded-lg px-4 py-2 hover:bg-[#D4884A]/10 transition">+ Create Venue</button>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">NAME</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">SLUG</th>
+                  <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">OWNER</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">STATUS</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">EVENTS</th>
                   <th className="py-2 text-[10px] font-mono text-white/30 tracking-wider">CREATED</th>
@@ -153,6 +208,11 @@ export default function AdminDashboard() {
                   <tr key={v.id} className="border-b border-white/5 hover:bg-white/3">
                     <td className="py-3 text-sm font-mono">{v.name}</td>
                     <td className="py-3 text-xs font-mono text-[#D4884A]">/{v.slug}</td>
+                    <td className="py-3">
+                      <button onClick={() => setOwner(v.id)} className="text-xs font-mono text-white/30 hover:text-white transition" title="Click to change owner">
+                        {v.ownerSpotifyId || "—"}
+                      </button>
+                    </td>
                     <td className="py-3">
                       {v.isActive ? (
                         <span className="text-[10px] font-mono bg-[#1DB954]/15 text-[#1DB954] border border-[#1DB954]/30 px-2 py-0.5 rounded">LIVE</span>

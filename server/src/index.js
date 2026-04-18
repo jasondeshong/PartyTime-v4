@@ -769,15 +769,20 @@ app.get("/api/venues/:id/analytics/peak-hours", requireSpotifyAuth, requireVenue
     if (error) throw error;
 
     const hours = new Array(24).fill(0);
+    const tz = req.query.tz || "America/Chicago";
     for (const e of events) {
-      const hour = new Date(e.created_at).getUTCHours();
-      hours[hour]++;
+      const localHour = parseInt(
+        new Date(e.created_at).toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: tz })
+      );
+      hours[localHour]++;
     }
 
-    res.json({
-      since,
-      hours: hours.map((count, hour) => ({ hour, count })),
+    const labels = hours.map((count, h) => {
+      const ampm = h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`;
+      return { hour: ampm, count };
     });
+
+    res.json({ since, hours: labels });
   } catch (err) {
     console.error("Analytics peak-hours error:", err);
     res.status(500).json({ error: "Failed to fetch peak hours" });

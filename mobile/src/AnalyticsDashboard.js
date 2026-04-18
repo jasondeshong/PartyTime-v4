@@ -8,6 +8,8 @@ import { GlassCard, ExposedGrid } from "./Glass";
 import { Scarab } from "./Symbols";
 import api from "./api";
 
+const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function AnalyticsDashboard({ venue, getToken, onBack }) {
@@ -52,7 +54,10 @@ export default function AnalyticsDashboard({ venue, getToken, onBack }) {
           "retention", "engagement", "crowd-timeline", "queue-health",
         ];
         const results = await Promise.all(
-          endpoints.map((e) => api(`/api/venues/${venue.id}/analytics/${e}`, { headers }).then((r) => r.ok ? r.json() : null))
+          endpoints.map((e) => {
+            const qs = e === "peak-hours" ? `?tz=${encodeURIComponent(DEVICE_TZ)}` : "";
+            return api(`/api/venues/${venue.id}/analytics/${e}${qs}`, { headers }).then((r) => r.ok ? r.json() : null);
+          })
         );
         if (cancelled) return;
         const keys = ["overview", "peakHours", "participation", "topSongs", "genres", "recentSongs", "sessions", "retention", "engagement", "crowd", "queueHealth"];

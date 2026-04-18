@@ -521,14 +521,14 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
           </TouchableOpacity>
         </View>
 
-        {/* Users — cartouche-shaped chips */}
-        <View style={s.usersRow}>
+        {/* Users — horizontal scroll of cartouche chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.usersScroll} contentContainerStyle={s.usersRow}>
           {users.map((u) => (
             <GlassCard key={u.id} intensity={15} borderRadius={radius.chip} style={s.userChip}>
               <Text style={s.userChipText}>{u.name}</Text>
             </GlassCard>
           ))}
-        </View>
+        </ScrollView>
 
         {/* Now Playing — hero glass card with scan lines, overflow for rolodex */}
         <GlassCard intensity={35} borderRadius={radius.card} glow={{ ...glow.hero, shadowColor: accent }} allowOverflow noBorder style={s.nowPlaying}>
@@ -548,10 +548,10 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
             {/* Upcoming (from queue) — stacked left, mirroring the right side */}
             {queue.slice(0, 5).reverse().map((song, i) => {
               const idx = queue.slice(0, 5).length - 1 - i;
-              const offsetX = -(ALBUM_MAIN * 0.58) - idx * 12;
-              const offsetY = 16 + idx * 3;
-              const opacity = [0.4, 0.28, 0.18, 0.10, 0.05][idx] || 0.04;
-              const scale = [0.48, 0.42, 0.37, 0.33, 0.29][idx] || 0.26;
+              const offsetX = -(ALBUM_MAIN * 0.62) - idx * 12;
+              const offsetY = 10 + idx * 3;
+              const opacity = [0.45, 0.32, 0.22, 0.12, 0.06][idx] || 0.04;
+              const scale = [0.65, 0.58, 0.52, 0.46, 0.40][idx] || 0.36;
               return song.albumArt ? (
                 <View
                   key={`up-${song.id}`}
@@ -599,10 +599,10 @@ export default function LobbyScreen({ code, isHost, user, initialState, getToken
 
             {/* Played — spines, edge-on to the right */}
             {(albumHistory.length > 0 ? albumHistory : []).slice(nowPlaying ? 1 : 0, (nowPlaying ? 1 : 0) + 5).map((album, i) => {
-              const offsetX = (ALBUM_MAIN * 0.58) + i * 12;
-              const offsetY = 16 + i * 3;
-              const opacity = [0.4, 0.28, 0.18, 0.10, 0.05][i] || 0.04;
-              const scale = [0.48, 0.42, 0.37, 0.33, 0.29][i] || 0.26;
+              const offsetX = (ALBUM_MAIN * 0.62) + i * 12;
+              const offsetY = 10 + i * 3;
+              const opacity = [0.45, 0.32, 0.22, 0.12, 0.06][i] || 0.04;
+              const scale = [0.65, 0.58, 0.52, 0.46, 0.40][i] || 0.36;
               return (
                 <View
                   key={`played-${album.spotifyId}`}
@@ -885,7 +885,8 @@ const s = StyleSheet.create({
   leaveText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 1.5, textTransform: "uppercase" },
 
   // Users — cartouche chips
-  usersRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: space.md },
+  usersScroll: { marginBottom: space.sm, flexGrow: 0 },
+  usersRow: { flexDirection: "row", gap: 6, paddingRight: space.md },
   userChip: { paddingHorizontal: 10, paddingVertical: 5 },
   userChipText: { color: palette.sandstone, fontSize: 10, fontFamily: fonts.mono, letterSpacing: 0.5 },
 

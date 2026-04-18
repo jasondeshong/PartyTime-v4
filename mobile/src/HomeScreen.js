@@ -21,15 +21,26 @@ const { height: SCREEN_H } = Dimensions.get("window");
  *
  * Same spatial hierarchy as Artifact's login screen.
  */
-export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings, getToken }) {
+export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings, getToken, onClearLastLobby }) {
   const [lobbyCode, setLobbyCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const toastRef = useRef(null);
   const [activeVenues, setActiveVenues] = useState([]);
+  const [lastLobby, setLastLobby] = useState(null);
 
   useEffect(() => {
     (async () => {
+      // Check for a consumer lobby to rejoin
+      try {
+        const stored = await AsyncStorage.getItem("pt_active_lobby");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.code && parsed.isHost) setLastLobby(parsed);
+        }
+      } catch {}
+
+      // Fetch active venue lobbies
       try {
         const token = getToken ? await getToken() : null;
         if (!token) return;
@@ -174,9 +185,32 @@ export default function HomeScreen({ user, onLogout, onJoinLobby, onOpenSettings
           </View>
         </Animated.View>
 
-        {/* Active venue lobbies — rejoin */}
-        {activeVenues.length > 0 && (
+        {/* Rejoin cards — active venues + last consumer lobby */}
+        {(activeVenues.length > 0 || lastLobby) && (
           <View style={s.activeVenues}>
+            {lastLobby && (
+              <TouchableOpacity
+                style={s.activeVenueCard}
+                onPress={() => {
+                  if (!socket.connected) socket.connect();
+                  socket.emit("join-lobby", { code: lastLobby.code, name: user.name });
+                  socket.once("lobby-state", (state) => {
+                    onJoinLobby({ code: lastLobby.code, isHost: true, initialState: state });
+                  });
+                  socket.once("error", () => {
+                    socket.disconnect();
+                    setLastLobby(null);
+                    if (onClearLastLobby) onClearLastLobby();
+                    showToast("Lobby no longer exists");
+                  });
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={s.activeVenueDot} />
+                <Text style={s.activeVenueName}>Lobby {lastLobby.code}</Text>
+                <Text style={s.activeVenueAction}>REJOIN</Text>
+              </TouchableOpacity>
+            )}
             {activeVenues.map((v) => (
               <TouchableOpacity
                 key={v.id}

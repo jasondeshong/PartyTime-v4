@@ -35,6 +35,12 @@ export default function App() {
   const [restoring, setRestoring] = useState(true);
   const restoredRef = useRef(false);
 
+  // Clear stored lobby when server says it's dead
+  useEffect(() => {
+    socket.on("lobby-closed", handleLobbyClosed);
+    return () => socket.off("lobby-closed", handleLobbyClosed);
+  }, []);
+
   // Restore active lobby on cold start
   useEffect(() => {
     if (restoredRef.current) return;
@@ -99,6 +105,12 @@ export default function App() {
   }
 
   function handleLeave() {
+    socket.disconnect();
+    setLobby(null);
+    // Keep LOBBY_KEY so host can rejoin from HomeScreen
+  }
+
+  function handleLobbyClosed() {
     socket.disconnect();
     setLobby(null);
     AsyncStorage.removeItem(LOBBY_KEY).catch(() => {});
@@ -260,6 +272,7 @@ export default function App() {
         onLogout={logout}
         onJoinLobby={handleJoinLobby}
         onOpenSettings={() => setShowSettings(true)}
+        onClearLastLobby={() => AsyncStorage.removeItem(LOBBY_KEY).catch(() => {})}
       />
     </>
   );
